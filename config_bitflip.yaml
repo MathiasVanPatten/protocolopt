@@ -7,9 +7,9 @@ simulation_params:
   beta: 1.0                  # 1 / kBT
 
 training_params:
-  alpha: 4.0
-  alpha_1: 2.0
-  alpha_2: 2.0
+  alpha: 2.0
+  alpha_1: 1.0
+  alpha_2: 0.1
   learning_rate: .01
   batch_size: 10000
   training_iterations: 400
@@ -21,7 +21,7 @@ protocol_params:
   b_endpoints: [20.0, 20.0]
   c_endpoints: [0.0, 0.0]
 
-save_directory: "./results_8_10_target/"  
+save_directory: "/mnt/b/wsl_code/[JIM]-2025_09-Optimal_Control/protocolopt/testing_code/"  
 'initilize_to_mc': True
 'use_work_target': True
 'use_adaptive_lr': True

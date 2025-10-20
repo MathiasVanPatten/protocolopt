@@ -306,7 +306,7 @@ class DerivativeArrays:
         self.torch_device = phase_data.device
     
     def get_protocol_values(self):
-        return [ piecewise_protocol_value(self.num_steps, p_item, p_endpoint, torch_device=self.torch_device) for p_item, p_endpoint in zip(self.parameter_lists, self.parameter_endpoint_lists) ]
+        return [piecewise_protocol_value(self.num_steps, p_item, p_endpoint, torch_device=self.torch_device) for p_item, p_endpoint in zip(self.parameter_lists, self.parameter_endpoint_lists) ]
 
     def get_array(self, function, advance=False):
         if advance:

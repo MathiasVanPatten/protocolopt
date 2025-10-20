@@ -11,7 +11,7 @@ import math
 import yaml
 import opt_kyle as bit_flip
 import argparse
-
+#TODO, decouple assumption of number of time steps from protocol_plot
 torch_device = torch.device('cuda' if torch.cuda.is_available() else 'mps')
 
 
@@ -115,11 +115,12 @@ def position_traj_plot(num_plot=1000):
     position_left = left_phase_data.detach().cpu()
     position_right = right_phase_data.detach().cpu()
     time = np.linspace(0, 1, 1000 + 1)
-    for idx in range(num_plot):
+    for idx in range(min(num_plot, position_left.shape[0])):
         ax.plot(position_left[idx,:,0].numpy(), label=f'path {idx}', alpha=0.5)
 
-    for idx in range(num_plot):
+    for idx in range(min(num_plot, position_right.shape[0])):
         ax.plot(position_right[idx,:,0].numpy(), label=f'path {idx}',alpha=0.5)
+
     ax.set_title('Trajectories')
     ax.set_xlabel('Time')
     ax.set_ylabel('Position')
@@ -130,11 +131,11 @@ def phase_traj_plot(num_plot=1000):
     fig, ax = plt.subplots(1,2, figsize=(12, 6))
     position_left = left_phase_data.detach().cpu()
     position_right = right_phase_data.detach().cpu()
-    for i in range(100):
+    for i in range(min(100, position_left.shape[0])):
         position = position_left[i, :, 0]
         velocity = position_left[i, :, 1]
         ax[0].plot(position, velocity, lw=1)
-    for i in range(100):
+    for i in range(min(100, position_right.shape[0])):
         position = position_right[i, :, 0]
         velocity = position_right[i, :, 1]
         ax[1].plot(position, velocity, lw=1)

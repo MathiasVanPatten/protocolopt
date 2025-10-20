@@ -10,14 +10,16 @@ import argparse
 import shutil
 import subprocess
 from torch.optim import lr_scheduler
+from pathlib import Path
+from tqdm import tqdm
+#TODO fix scheduler loading from checkpoint
+# parser = argparse.ArgumentParser()
+# parser.add_argument('config', type=str, default='config.yaml', help='Path to the configuration file.')
+# args = parser.parse_args()
+# print(f"Running optimization from {args.config}")
+local_yaml_path = Path(r'/mnt/b/wsl_code/[JIM]-2025_09-Optimal_Control/protocolopt/config_bitflip.yaml') #HACK
 
-parser = argparse.ArgumentParser()
-parser.add_argument('config', type=str, default='config.yaml', help='Path to the configuration file.')
-args = parser.parse_args()
-print(f"Running optimization from {args.config}")
-
-
-with open(args.config, "r") as f:
+with open(local_yaml_path, "r") as f: #HACK, path was args.config
     config = yaml.safe_load(f)
 
 simulation_params = config["simulation_params"]
@@ -82,14 +84,14 @@ else:
     optimizer_a = torch.optim.Adam([protocol_params['a_list']], lr=training_params['learning_rate'])
     optimizer_b = torch.optim.Adam([protocol_params['b_list']], lr=training_params['learning_rate'])
 
-    if config.get('use_adaptive_lr', False):
-        lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1)
-        scheduler_a = lr_scheduler.StepLR(optimizer_a, step_size=100, gamma=0.9)
-        scheduler_b = lr_scheduler.StepLR(optimizer_b, step_size=100, gamma=0.9)
+
 
     print("Initialized new alist and blist.")
 
-
+if config.get('use_adaptive_lr', False):
+    # lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.1)
+    scheduler_a = lr_scheduler.StepLR(optimizer_a, step_size=100, gamma=0.9)
+    scheduler_b = lr_scheduler.StepLR(optimizer_b, step_size=100, gamma=0.9)
 
 #initialize the GPU tensors for memory management
 array_kwargs = {'dtype': torch.float32, 'device': torch_device}
@@ -105,7 +107,7 @@ potential_value_advance_grad =  torch.empty((training_params['batch_size'], simu
 
 
 
-for step in range(training_params['training_iterations']):
+for step in tqdm(range(training_params['training_iterations']), desc = 'Training', total = training_params['training_iterations']):
     optimizer_a.zero_grad()
     optimizer_b.zero_grad() 
     ######
@@ -234,11 +236,11 @@ for step in range(training_params['training_iterations']):
                 'optimizer_a_dict': optimizer_a.state_dict(),
             }, directory + 'work_checkpoint.pt') 
 
-            shutil.copyfile(args.config, directory + 'config.yaml')
+            shutil.copyfile(local_yaml_path, directory + 'config.yaml') #HACK, path was args.config
         
         print("Checkpoint saved.")
 
         if plot_boolean:
             print(f"Plotting checkpoint at step {step}, total_iter {total_iterations}")
-            res = subprocess.call(['python', 'plot.py', save_dir])
+            res = subprocess.call(['python', '[JIM]-2025_09-Optimal_Control/protocolopt/plot.py', save_dir])
             print("Checkpoint plotted.")
