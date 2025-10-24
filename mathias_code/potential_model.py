@@ -1,13 +1,15 @@
-from abc import abstractmethod
-
 import torch
-import torch.functional as F
-class PotentialModel:
+import torch.nn.functional as F 
+from abc import ABC, abstractmethod
+class PotentialModel(ABC):
     #potential models use any kind of differentiable math to go from a set
     #of trainable parameters to a full tensor of values to be used in the potential
-    def __init__(self, time_steps) -> None:
-        self.time_steps = time_steps
 
+    #fixed starting is a boolean, if True the starting potential is fixed and the mcmc sampler will only do warmup once 
+    def __init__(self, time_steps, fixed_starting) -> None:
+        self.time_steps = time_steps
+        self.fixed_starting = fixed_starting
+        
     @abstractmethod
     def get_coeff_grid(self):
         #return a tensor of shape (coefficients, spatial dimensions, time)
@@ -21,7 +23,11 @@ class PotentialModel:
 
 class LinearPiecewise(PotentialModel):
     def __init__(self, coefficient_count, time_steps, knot_count, initial_coeff_guess, endpoints = None) -> None:
-        super().__init__(time_steps)
+        if endpoints is not None:
+            fixed_starting = True
+        else:
+            fixed_starting = False
+        super().__init__(time_steps, fixed_starting)
         if initial_coeff_guess.shape != (coefficient_count, knot_count if endpoints is None else knot_count - 2):
             raise ValueError(f"Initial coefficient guess must be of shape (coefficient_count, knot_count if endpoints is None else knot_count - 2), got {initial_coeff_guess.shape}")
         
@@ -29,9 +35,9 @@ class LinearPiecewise(PotentialModel):
         self.knot_count = knot_count
         self.endpoints = endpoints
         if self.endpoints is not None:
-            self.trainable_params = torch.nn.Parameter(initial_coeff_guess.clone())
+            self._trainable_params = torch.nn.Parameter(initial_coeff_guess.clone())
         else:
-            self.trainable_params = torch.nn.Parameter(initial_coeff_guess.clone())
+            self._trainable_params = torch.nn.Parameter(initial_coeff_guess.clone())
 
         self.device = initial_coeff_guess.device
 
@@ -48,4 +54,4 @@ class LinearPiecewise(PotentialModel):
         return coeff_grid.squeeze(0)
     
     def trainable_params(self):
-        return self.trainable_params
+        return [self._trainable_params]
