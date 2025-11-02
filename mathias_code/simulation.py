@@ -3,6 +3,7 @@ import torch
 import pyro
 from pyro.infer.mcmc import MCMC, NUTS
 import math
+import tqdm
 
 #TODO In theory now the ability to form a full trajectory tensor with all of the potential, protocol, and sim engine
 # chain should work, in the next session we need to tie them together so they pass what's needed between
@@ -29,7 +30,10 @@ class Simulation:
         self.beta = params.get('beta', 1.0)
         self.gamma = self.sim_engine.gamma
         self.dt = self.sim_engine.dt
-        
+        #HACK WHEN NOISE IS GIVEN TO SIMULATE THE NOISE SIGMA WILL STILL BE SET AS IT WAS DURING TRAINING, POSSIBLY AN ISSUE
+        #HACK MU IS FIXED AT 1 FOR NOW
+        self.noise_sigma = torch.sqrt(torch.tensor(2 * self.gamma) / self.beta) #Einstein relation for overdamped systems TODO will need to change when underdamped is added
+
 
         self.epochs = params.get('epochs', 100)
         self.learning_rate = params.get('learning_rate', 0.001)
@@ -64,8 +68,7 @@ class Simulation:
         return samples
 
     def _get_noise(self):
-        std = torch.sqrt(torch.tensor(2 * self.gamma) / self.beta)
-        samples = torch.randn(self.mcmc_num_samples, self.time_steps, device=self.device) * std * torch.sqrt(self.dt)
+        samples = torch.randn(self.mcmc_num_samples, self.time_steps, device=self.device) * self.noise_sigma * torch.sqrt(self.dt)
         return samples
 
     def simulate(self, initial_positions = None, initial_velocities = None, noise = None):
@@ -77,12 +80,23 @@ class Simulation:
         if noise is None:
             noise = self._get_noise()
         coeff_grid = self.potential.potential_model.get_coeff_grid()
-        return self.sim_engine.make_trajectories(self.potential, initial_positions, initial_velocities, self.time_steps, noise, coeff_grid, self.device)
+        return self.sim_engine.make_trajectories(self.potential, initial_positions, initial_velocities, self.time_steps, noise, self.noise_sigma, coeff_grid, self.device)
 
     def _setup_optimizer(self, optimizer_class = torch.optim.Adam):
         self.optimizer = optimizer_class(self.potential.potential_model.trainable_params(), lr=self.learning_rate)
 
     def train(self):
         self._setup_optimizer()
-        for epoch in range(self.epochs):
-            pass
+        with tqdm(range(self.epochs), desc='Training') as pbar:
+            for epoch in pbar:
+                self.optimizer.zero_grad()
+                sim_dict = self.simulate()
+                malliavin_gradient, loss_values = self.loss.compute_FRR_gradient(
+                    sim_dict['potential'], sim_dict['trajectories'], sim_dict['malliavian_weight']
+                )
+                self.potential.potential_model._trainable_params.grad += malliavin_gradient
+                self.optimizer.step()
+                mean_loss = loss_values.mean().item()
+                pbar.set_postfix({'loss': mean_loss})
+        print('Training complete')
+        

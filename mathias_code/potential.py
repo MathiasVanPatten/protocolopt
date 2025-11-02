@@ -13,10 +13,9 @@ class Potential(ABC):
         #control variables may be singular
         pass
 
-    def get_potential_value(self, space_grid, coeff_grid,time_index):
+    def get_potential_value(self, space_grid, coeff_grid, time_index):
         return self.potential_value(space_grid, coeff_grid[:, time_index])
 
-    
     def dv_dx(self, space_grid, coeff_grid, time_index):
         coeff_grid = coeff_grid[:, time_index].detach()
         graphed_space_grid = space_grid.detach().requires_grad_(True)
@@ -41,9 +40,9 @@ class Potential(ABC):
         )[0]
 
         dv_dxda = torch.autograd.grad(
-            outputs = dv_dx,
+            outputs = dV_dx,
             inputs = coeff_grid,
-            grad_outputs = torch.ones_like(dv_dx),
+            grad_outputs = torch.ones_like(dV_dx),
             create_graph = False
         )[0]
         return dv_dxda

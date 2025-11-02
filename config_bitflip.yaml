@@ -1,6 +1,6 @@
 simulation_params:
   dt: 0.001
-  num_steps: 1000
+  num_steps: 666
   gamma: 0.1
   mass: 1.0
 
@@ -11,7 +11,7 @@ training_params:
   alpha_1: 1.0
   alpha_2: 0.1
   learning_rate: .01
-  batch_size: 10000
+  batch_size: 777
   training_iterations: 400
 
 protocol_params:

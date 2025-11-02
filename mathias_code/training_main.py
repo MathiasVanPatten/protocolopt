@@ -14,6 +14,7 @@ if __name__ == '__main__':
     #order potential model
     #potential
     #sim engine
+    #loss 
     #simulation
     #then train
     experiment_potential = QuarticPotential(torch.tensor([[5, -10], [5, -10]], device=device))

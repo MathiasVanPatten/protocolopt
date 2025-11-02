@@ -17,9 +17,8 @@ class PotentialModel(ABC):
 
     @abstractmethod
     def trainable_params(self):
-        # return the parameters you want attached to the optimizer
+        # return the parameters you want attached to the optimizer as a list
         pass
-
 
 class LinearPiecewise(PotentialModel):
     def __init__(self, coefficient_count, time_steps, knot_count, initial_coeff_guess, endpoints = None) -> None:
