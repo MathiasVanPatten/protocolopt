@@ -20,7 +20,7 @@ Not binding, the further out the less binding as I find issues through the proce
     - [ ] Generalize training script, moving the more basic training tasks into a yaml-led process
     - [ ] Do an api pass, making sure everything makes sense and is as easy as possible with error checking to make sure the user is doing the right thing
     - [ ] Optimization pass
-    - [ ] Do a documentation pass, docstrings and comments
+    - [ ] Do a documentation pass, docstrings, typehints, comments, etc.
     - [ ] Add ability to save and load model
 
 ## Some stretch goals
