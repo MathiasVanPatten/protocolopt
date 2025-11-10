@@ -1,6 +1,6 @@
 testing_code/
 __pycache__/
-mathias_code/figs/
+figs/
 *.png
 test_gradient_flow.py
 *.pt
