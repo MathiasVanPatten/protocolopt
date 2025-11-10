@@ -17,34 +17,36 @@ class Potential(ABC):
         return self.potential_value(space_grid, coeff_grid[:, time_index])
 
     def dv_dx(self, space_grid, coeff_grid, time_index):
-        coeff_grid = coeff_grid[:, time_index].detach()
-        graphed_space_grid = space_grid.detach().requires_grad_(True)
-        V = self.potential_value(graphed_space_grid, coeff_grid)
-        dV_dx = torch.autograd.grad(
+        coeff_grid_slice = coeff_grid[:, time_index]
+        graphed_space_grid = space_grid.requires_grad_(True)
+        V = self.potential_value(graphed_space_grid, coeff_grid_slice)
+        dv_dx = torch.autograd.grad(
             outputs = V,
             inputs = graphed_space_grid,
             grad_outputs = torch.ones_like(V),
-            create_graph = False
+            create_graph = True
         )[0]
-        return dV_dx
+        return dv_dx
 
     def dv_dxda(self, space_grid, coeff_grid, time_index):
-        coeff_grid = coeff_grid[:, time_index]
-        graphed_space_grid = space_grid.detach().requires_grad_(True)
-        V = self.potential_value(graphed_space_grid, coeff_grid)
+        coeff_for_grad = coeff_grid[:, time_index]
+        graphed_space_grid = space_grid.requires_grad_(True)
+        V = self.potential_value(graphed_space_grid, coeff_for_grad)
+
         dV_dx = torch.autograd.grad(
             outputs = V,
             inputs = graphed_space_grid,
             grad_outputs = torch.ones_like(V),
             create_graph = True
         )[0]
-
+        
         dv_dxda = torch.autograd.grad(
             outputs = dV_dx,
-            inputs = coeff_grid,
-            grad_outputs = torch.ones_like(dV_dx),
+            inputs = coeff_for_grad,
+            grad_outputs=torch.ones_like(dV_dx) / len(dV_dx), #use mean to aggregate gradients since params effect all trajs
             create_graph = False
         )[0]
+        
         return dv_dxda
 
 class QuarticPotential(Potential):

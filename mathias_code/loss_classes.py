@@ -19,9 +19,11 @@ class Loss(ABC):
 
     def _compute_direct_grad(self, loss_values):
         loss_values.mean(axis = -1).backward()
+        pass
 
     def _compute_malliavin_grad(self, loss_values, malliavian_weights):
-        return (loss_values * malliavian_weights).mean(axis = -1)
+        #malliavian_weights are (num_samples, coeff_count, time_steps)
+        return (loss_values[:,None, None] * malliavian_weights).mean(axis = 0)
 
     def compute_FRR_gradient(self, potential_tensor, trajectory_tensor, malliavian_weights, return_loss_values = True):
         #loss is a tensor of shape (num_samples,)
@@ -72,7 +74,7 @@ class EndpointLossBase(Loss):
                 }
             }
         '''
-
+        
         self.midpoints = midpoints
         self.bit_locations = bit_locations
         self.exponent = exponent
@@ -89,9 +91,10 @@ class EndpointLossBase(Loss):
             return 1
         else:
             return 1 + self._get_depth_of_truth_table(truth_table_dict[0])
+
     def _compute_starting_bits_int(self, trajectory_tensor):
         starting_bits = trajectory_tensor[:,:,0,0] > self.midpoints[None,:]
-        starting_bits_int = torch.sum(starting_bits.int() * torch.tensor(list(reversed([2**x for x in range(self.midpoints.shape[0])])))[None, :], axis = -1)
+        starting_bits_int = torch.sum(starting_bits.int() * torch.tensor(list(reversed([2**x for x in range(self.midpoints.shape[0])])), device = trajectory_tensor.device)[None, :], axis = -1)
         return starting_bits_int
 
     def _endpoint_loss(self, trajectory_tensor):
@@ -107,7 +110,7 @@ class EndpointLossBase(Loss):
     #     return self._endpoint_loss(trajectory_tensor)
 
     def _gen_validity_mapping(self):
-        self.validity = torch.zeros(self.domain, self.domain, dtype = torch.bool)
+        self.validity = torch.zeros(self.domain, self.domain, dtype = torch.bool, device = self.bit_locations.device)
         for inputstate, outputstate in self.flattened_truth_table.items():
             self.validity[inputstate, outputstate] = True
 
@@ -154,10 +157,16 @@ class StandardLoss(EndpointLossBase):
         self.var_weight = var_weight
 
     def loss(self, potential_tensor, trajectory_tensor):
+        # trajectory_tensor = trajectory_tensor.detach().requires_grad_(True)    
         starting_bits_int = self._compute_starting_bits_int(trajectory_tensor)
         endpoint_loss = self._endpoint_loss(trajectory_tensor)
         work_loss_value = work_loss(potential_tensor)
         var_loss_value = variance_loss(trajectory_tensor, starting_bits_int, self.domain)
+        # bun = torch.autograd.grad(
+        #     outputs = endpoint_loss.sum(),
+        #     inputs = trajectory_tensor,
+        #     create_graph = True
+        # )[0]
         return (
             self.endpoint_weight * endpoint_loss
             + self.work_weight * work_loss_value

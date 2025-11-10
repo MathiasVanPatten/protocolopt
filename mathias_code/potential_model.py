@@ -42,7 +42,7 @@ class LinearPiecewise(PotentialModel):
 
     def _get_knots(self):
         if self.endpoints is not None:
-            return torch.cat([self.endpoints[..., 0:1], self.trainable_params, self.endpoints[..., -1:]], dim=-1)
+            return torch.cat([self.endpoints[..., 0:1], self._trainable_params, self.endpoints[..., -1:]], dim=-1)
         else:
             return self.trainable_params
         
