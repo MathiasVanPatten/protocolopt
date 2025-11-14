@@ -1,6 +1,6 @@
 import torch
 import math
-from potential import QuarticPotential
+from potential import QuarticPotential, QuarticPotentialWithLinearTerm
 from potential_model import LinearPiecewise
 from sim_engine import EulerMaruyama
 from loss_classes import StandardLoss
@@ -31,12 +31,12 @@ beta = 1.0
 
 # Protocol parameters
 num_coefficients = 16
-a_endpoints = [5.0, 5.0]
+a_endpoints = [10.0, 10.0]
 b_endpoints = [20.0, 20.0]
-
+c_endpoints = [0.0, 0.0]
 # Training parameters
 samples_per_well = 2000 
-training_iterations = 400
+training_iterations = 250
 learning_rate = 0.025
 alpha = 2.0  # endpoint_weight
 alpha_1 = 0.0  # var_weight
@@ -53,15 +53,17 @@ centers = math.sqrt(b_endpoints[0] / (2 * a_endpoints[0]))
 # Create endpoints tensor
 endpoints = torch.tensor([
     [a_endpoints[0], a_endpoints[1]], 
-    [b_endpoints[0], b_endpoints[1]]
+    [b_endpoints[0], b_endpoints[1]],
+    [c_endpoints[0], c_endpoints[1]]
 ], device=device)
 
+
 # Create initial coefficient guess
-initial_coeff_guess = torch.randn((2, num_coefficients), device=device)
+initial_coeff_guess = torch.randn((endpoints.shape[0], num_coefficients), device=device)
 
 # Instantiate PotentialModel (LinearPiecewise)
 potential_model = LinearPiecewise(
-    coefficient_count=2,
+    coefficient_count=endpoints.shape[0],
     time_steps=time_steps,
     knot_count=num_coefficients+2,
     initial_coeff_guess=initial_coeff_guess,
@@ -69,7 +71,7 @@ potential_model = LinearPiecewise(
 )
 
 # Instantiate Potential (QuarticPotential)
-potential = QuarticPotential()
+potential = QuarticPotentialWithLinearTerm()
 
 # Instantiate SimEngine (EulerMaruyama)
 sim_engine = EulerMaruyama(
@@ -81,7 +83,7 @@ sim_engine = EulerMaruyama(
 # Create loss function (StandardLoss)
 midpoints = torch.tensor([0.0], device=device)
 bit_locations = torch.tensor([[-centers], [centers]], device=device)
-truth_table = {0: ['1'], 1: ['0']}
+truth_table = {0: ['0'], 1: ['0']}
 
 loss = StandardLoss(
     midpoints=midpoints,
@@ -127,7 +129,7 @@ callbacks.append(confusion_matrix_callback)
 # Add Aim callback if available
 if AIM_AVAILABLE:
     aim_callback = AimCallback(
-        experiment_name='bitflip_training',
+        experiment_name='bit_erase_training',
         log_system_params=False
     )
     callbacks.append(aim_callback)
