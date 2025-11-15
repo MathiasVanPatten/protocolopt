@@ -83,7 +83,7 @@ class EndpointLossBase(Loss):
         self.flattened_truth_table = {k : None for k in range(self.domain)}
         self._flatten_truth_table(truth_table)
         print(self.flattened_truth_table)
-        self._validate_flattened_truth_table()
+        # self._validate_flattened_truth_table()
         self._gen_validity_mapping()
 
     def _get_depth_of_truth_table(self, truth_table_dict):
@@ -96,6 +96,11 @@ class EndpointLossBase(Loss):
         starting_bits = trajectory_tensor[:,:,0,0] > self.midpoints[None,:]
         starting_bits_int = torch.sum(starting_bits.int() * torch.tensor(list(reversed([2**x for x in range(self.midpoints.shape[0])])), device = trajectory_tensor.device)[None, :], axis = -1)
         return starting_bits_int
+    
+    def _compute_ending_bits_int(self, trajectory_tensor):
+        ending_bits = trajectory_tensor[:,:,-1,0] > self.midpoints[None,:]
+        ending_bits_int = torch.sum(ending_bits.int() * torch.tensor(list(reversed([2**x for x in range(self.midpoints.shape[0])])), device = trajectory_tensor.device)[None, :], axis = -1)
+        return ending_bits_int
 
     def _endpoint_loss(self, trajectory_tensor):
         starting_bits_int = self._compute_starting_bits_int(trajectory_tensor)
@@ -113,6 +118,37 @@ class EndpointLossBase(Loss):
         self.validity = torch.zeros(self.domain, self.domain, dtype = torch.bool, device = self.bit_locations.device)
         for inputstate, outputstate in self.flattened_truth_table.items():
             self.validity[inputstate, outputstate] = True
+    
+    def compute_binary_trajectory_info(self, trajectory_tensor):
+        """
+        Compute starting and ending binary states for trajectories.
+        
+        Args:
+            trajectory_tensor: Trajectory tensor of shape (num_samples, spatial_dimensions, time_steps+1, 2)
+        
+        Returns:
+            Dictionary with 'starting_bits_int' and 'ending_bits_int' tensors
+        """
+        return {
+            'starting_bits_int': self._compute_starting_bits_int(trajectory_tensor),
+            'ending_bits_int': self._compute_ending_bits_int(trajectory_tensor)
+        }
+    
+    def compute_binary_error_rate(self, trajectory_tensor):
+        """
+        Compute the percentage of trajectories ending in invalid states.
+        
+        Args:
+            trajectory_tensor: Trajectory tensor (should be detached)
+            
+        Returns:
+            Float representing the error rate (0.0 to 1.0)
+        """
+        starting_bits_int = self._compute_starting_bits_int(trajectory_tensor)
+        ending_bits_int = self._compute_ending_bits_int(trajectory_tensor)
+        valid_transitions = self.validity[starting_bits_int, ending_bits_int]
+        error_rate = (~valid_transitions).float().mean()
+        return error_rate.item()
 
     def _validate_input_sequence_in_truth_table(self, truth_table_dict, current_bit_sequence = ''):
         for bit in [0, 1]:
@@ -139,14 +175,14 @@ class EndpointLossBase(Loss):
                     raise TruthTableError(f"Missing output for {bit}", current_bit_sequence + str(bit))
                 self.flattened_truth_table[int(current_bit_sequence + str(bit), base = 2)] = list_to_add
 
-    def _validate_flattened_truth_table(self):
-        output_values = []
-        for k, v in self.flattened_truth_table.items():
-            output_values.extend(v)
-        missing = set(range(self.domain)) - set(output_values)
-        if missing:
-            missing_bin = [bin(x)[2:].zfill(len(self.midpoints)) for x in sorted(missing)]
-            raise ValueError(f"Missing output values: {missing_bin} (as binary), found at least one instance of {set(output_values)}")
+    # def _validate_flattened_truth_table(self):
+    #     output_values = []
+    #     for k, v in self.flattened_truth_table.items():
+    #         output_values.extend(v)
+    #     missing = set(range(self.domain)) - set(output_values)
+    #     if missing:
+    #         missing_bin = [bin(x)[2:].zfill(len(self.midpoints)) for x in sorted(missing)]
+    #         raise ValueError(f"Missing output values: {missing_bin} (as binary), found at least one instance of {set(output_values)}")
 
 
 class StandardLoss(EndpointLossBase):
@@ -172,6 +208,28 @@ class StandardLoss(EndpointLossBase):
             + self.work_weight * work_loss_value
             + self.var_weight * var_loss_value
         )
+    
+    def compute_loss_components(self, potential_tensor, trajectory_tensor):
+        """
+        Compute individual loss components for logging/analysis.
+        
+        Args:
+            potential_tensor: Detached potential tensor
+            trajectory_tensor: Detached trajectory tensor
+            
+        Returns:
+            Dictionary with loss component values (already detached from input)
+        """
+        starting_bits_int = self._compute_starting_bits_int(trajectory_tensor)
+        endpoint_loss_val = self._endpoint_loss(trajectory_tensor)
+        work_loss_val = work_loss(potential_tensor)
+        var_loss_val = variance_loss(trajectory_tensor, starting_bits_int, self.domain)
+        
+        return {
+            'endpoint_loss': endpoint_loss_val,
+            'work_loss': work_loss_val,
+            'variance_loss': var_loss_val
+        }
 
 if __name__ == '__main__':
     good_truth_table = {

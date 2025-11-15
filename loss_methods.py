@@ -1,7 +1,6 @@
 #for simple losses that are stateless
 import torch
 
-
 def work_loss(potential_tensor):
     return (potential_tensor[...,1:] - potential_tensor[...,:-1]).sum(axis = -1)
 

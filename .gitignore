@@ -6,3 +6,4 @@ test_gradient_flow.py
 *.pt
 *.yaml
 *.json
+.aim/
