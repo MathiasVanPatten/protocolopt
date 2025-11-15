@@ -97,8 +97,7 @@ loss = StandardLoss(
 params = {
     'spatial_dimensions': spatial_dimensions,
     'time_steps': time_steps,
-    'samples_per_well': samples_per_well,  # Use new per-well sampling mode
-    # 'mcmc_num_samples': batch_size,  # Fallback for legacy mode
+    'samples_per_well': samples_per_well,
     'mcmc_warmup_ratio': mcmc_warmup_ratio,
     'mcmc_starting_spatial_bounds': mcmc_starting_spatial_bounds,
     'mcmc_chains_per_well': 1,

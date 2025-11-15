@@ -8,7 +8,7 @@ Not binding, the further out the less binding as I find issues through the proce
     - [X] Change plotting to be number of spatial dimensions agnostic and moved into callbacks
     - [X] Add ability to constrain MCMC chains to specific bits of the potential to guaruntee a good starting state
     - [X] Switch Experiment Tracking to Aim
-- [ ] MVP Bit Erasure, showing the ability to replicate the basic operation on 1 bit
+- [X] MVP Bit Erasure, showing the ability to replicate the basic operation on 1 bit
 - [ ] Replication Revisit
     - [ ] Ensure the work is as expected compared to original code for bitflip and erasure
         - [ ] Bitflip
@@ -34,7 +34,6 @@ Not binding, the further out the less binding as I find issues through the proce
 - [ ] Show different potential model
     - [ ] Spline
     - [ ] Multi-layer Perceptron
-    - [ ] LSTM
 
     
 

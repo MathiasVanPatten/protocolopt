@@ -39,7 +39,7 @@ samples_per_well = 2000
 training_iterations = 250
 learning_rate = 0.025
 alpha = 2.0  # endpoint_weight
-alpha_1 = 0.0  # var_weight
+alpha_1 = 0.1  # var_weight
 alpha_2 = 0.1  # work_weight
 
 # Additional parameters
