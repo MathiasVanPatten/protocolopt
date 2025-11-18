@@ -5,7 +5,7 @@ from potential_model import LinearPiecewise
 from sim_engine import EulerMaruyama
 from loss_classes import StandardLoss
 from simulation import Simulation
-from plotting_callbacks import TrajectoryPlotCallback, ConfusionMatrixCallback
+from plotting_callbacks import TrajectoryPlotCallback, ConfusionMatrixCallback, PotentialLandscapePlotCallback, CoefficientPlotCallback
 try:
     from aim_callback import AimCallback
     AIM_AVAILABLE = True
@@ -24,9 +24,11 @@ else:
 print(f"Using device: {device}")
 
 # Simulation parameters
-time_steps = 100
+# time_steps = 100
+time_steps = 100 #overdamped
 dt = 1/time_steps
-gamma = 0.1
+# gamma = 0.1
+gamma = 1.0 #overdamped
 beta = 1.0
 
 # Protocol parameters
@@ -35,12 +37,13 @@ a_endpoints = [10.0, 10.0]
 b_endpoints = [20.0, 20.0]
 c_endpoints = [0.0, 0.0]
 # Training parameters
-samples_per_well = 2000 
+samples_per_well = 400 
 training_iterations = 250
-learning_rate = 0.025
+learning_rate = 0.001
 alpha = 2.0  # endpoint_weight
 alpha_1 = 0.1  # var_weight
 alpha_2 = 0.1  # work_weight
+alpha_3 = 0  # smoothness_weight
 
 # Additional parameters
 spatial_dimensions = 1
@@ -59,7 +62,8 @@ endpoints = torch.tensor([
 
 
 # Create initial coefficient guess
-initial_coeff_guess = torch.randn((endpoints.shape[0], num_coefficients), device=device)
+initial_coeff_guess = 0.1 * torch.randn((endpoints.shape[0], num_coefficients), device=device)
+# initial_coeff_guess = torch.zeros((endpoints.shape[0], num_coefficients), device=device)
 
 # Instantiate PotentialModel (LinearPiecewise)
 potential_model = LinearPiecewise(
@@ -75,7 +79,7 @@ potential = QuarticPotentialWithLinearTerm()
 
 # Instantiate SimEngine (EulerMaruyama)
 sim_engine = EulerMaruyama(
-    mode='underdamped',
+    mode='overdamped',
     gamma=gamma,
     dt=dt
 )
@@ -92,6 +96,7 @@ loss = StandardLoss(
     endpoint_weight=alpha,
     work_weight=alpha_2,
     var_weight=alpha_1,
+    smoothness_weight=alpha_3,
     exponent=2
 )
 
@@ -134,6 +139,17 @@ if AIM_AVAILABLE:
     )
     callbacks.append(aim_callback)
 
+potential_landscape_callback = PotentialLandscapePlotCallback(
+    save_dir='figs',
+    plot_frequency=None
+)
+callbacks.append(potential_landscape_callback)
+
+coefficient_callback = CoefficientPlotCallback(
+    save_dir='figs',
+    plot_frequency=None
+)
+callbacks.append(coefficient_callback)
 # Instantiate Simulation
 simulation = Simulation(
     potential=potential,
