@@ -32,12 +32,12 @@ class Simulation:
         self.beta = params.get('beta', 1.0)
         self.gamma = self.sim_engine.gamma
         self.dt = self.sim_engine.dt
-        #HACK WHEN NOISE IS GIVEN TO SIMULATE THE NOISE SIGMA WILL STILL BE SET AS IT WAS DURING TRAINING, POSSIBLY AN ISSUE
-        #HACK MU IS FIXED AT 1 FOR NOW
-        self.noise_sigma = torch.sqrt(torch.tensor(2 * self.gamma) / self.beta) #Einstein relation for overdamped systems TODO will need to change when underdamped is added
+        #NOTE WHEN NOISE IS GIVEN TO SIMULATE THE NOISE SIGMA WILL STILL BE SET AS IT WAS DURING TRAINING, POSSIBLY AN ISSUE
+
+        self.noise_sigma = torch.sqrt(torch.tensor(2 * self.gamma / self.beta))
         self.epochs = params.get('epochs', 100)
         self.learning_rate = params.get('learning_rate', 0.001)
-        self.grad_clip_max_norm = params.get('grad_clip_max_norm', 5.0)
+        self.grad_clip_max_norm = params.get('grad_clip_max_norm', 1.0)
         if self.potential_model.fixed_starting:
             self._run_multichain_mcmc()
     
@@ -150,7 +150,6 @@ class Simulation:
             noise,
             self.noise_sigma,
             coeff_grid,
-            self.device,
             DEBUG_PRINT = DEBUG_PRINT
         ), coeff_grid
 
@@ -172,7 +171,8 @@ class Simulation:
                 self.optimizer.zero_grad()
                 sim_dict, coeff_grid = self.simulate()
                 dmw_dcoeff, loss_values = self.loss.compute_FRR_gradient(
-                    sim_dict['potential'], sim_dict['trajectories'], sim_dict['malliavian_weight']
+                    sim_dict['potential'], sim_dict['trajectories'], sim_dict['malliavian_weight'],
+                    coeff_grid, self.dt
                 )
 
                 dmw_da = torch.autograd.grad(
@@ -199,8 +199,15 @@ class Simulation:
                 mean_loss = loss_values.mean().item()
                 pbar.set_postfix({'loss': mean_loss})
                 
+                sim_dict_detached = {
+                    'trajectories': sim_dict['trajectories'].detach(),
+                    'potential': sim_dict['potential'].detach(),
+                    'malliavian_weight': sim_dict['malliavian_weight'].detach(),
+                    'coeff_grid': coeff_grid.detach()
+                }
+                
                 for callback in self.callbacks:
-                    callback.on_epoch_end(self, sim_dict, loss_values, epoch)
+                    callback.on_epoch_end(self, sim_dict_detached, loss_values, epoch)
         
         for callback in self.callbacks:
             callback.on_train_end(self, sim_dict, coeff_grid, epoch)

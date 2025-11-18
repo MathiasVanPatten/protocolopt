@@ -72,6 +72,8 @@ class AimCallback(Callback):
             self.run['hparams']['work_weight'] = simulation_object.loss.work_weight
         if hasattr(simulation_object.loss, 'var_weight'):
             self.run['hparams']['var_weight'] = simulation_object.loss.var_weight
+        if hasattr(simulation_object.loss, 'smoothness_weight'):
+            self.run['hparams']['smoothness_weight'] = simulation_object.loss.smoothness_weight
         
         # Log potential model info
         self.run['hparams']['potential_model_type'] = type(simulation_object.potential_model).__name__
@@ -97,9 +99,8 @@ class AimCallback(Callback):
         # Compute and track additional metrics
         loss_object = simulation_object.loss
         
-        # Detach tensors to avoid breaking gradient graph
-        trajectories_detached = sim_dict['trajectories'].detach()
-        potential_detached = sim_dict['potential'].detach()
+        trajectories_detached = sim_dict['trajectories']
+        potential_detached = sim_dict['potential']
         
         # 1. Binary error rate (% of trajectories ending in invalid states)
         if hasattr(loss_object, 'compute_binary_error_rate'):
@@ -108,16 +109,21 @@ class AimCallback(Callback):
         
         # 2. Individual loss components
         if hasattr(loss_object, 'compute_loss_components'):
-            loss_components = loss_object.compute_loss_components(potential_detached, trajectories_detached)
+            loss_components = loss_object.compute_loss_components(
+                potential_detached, trajectories_detached,
+                sim_dict['coeff_grid'], simulation_object.dt
+            )
             
             # Track each component
             endpoint_mean = loss_components['endpoint_loss'].mean().item()
             work_mean = loss_components['work_loss'].mean().item()
             variance_mean = loss_components['variance_loss'].mean().item()
+            smoothness_mean = loss_components['smoothness_loss'].mean().item()
             
             self.run.track(endpoint_mean, name='loss_components/endpoint', epoch=epoch)
             self.run.track(work_mean, name='loss_components/work', epoch=epoch)
             self.run.track(variance_mean, name='loss_components/variance', epoch=epoch)
+            self.run.track(smoothness_mean, name='loss_components/smoothness', epoch=epoch)
         
         # 3. Average work (mean delta V across trajectories)
         # Work is computed as sum of (V[t+1] - V[t]) over time for each trajectory

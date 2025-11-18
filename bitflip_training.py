@@ -5,7 +5,7 @@ from potential_model import LinearPiecewise
 from sim_engine import EulerMaruyama
 from loss_classes import StandardLoss
 from simulation import Simulation
-from plotting_callbacks import TrajectoryPlotCallback, ConfusionMatrixCallback
+from plotting_callbacks import TrajectoryPlotCallback, ConfusionMatrixCallback, PotentialLandscapePlotCallback, CoefficientPlotCallback
 try:
     from aim_callback import AimCallback
     AIM_AVAILABLE = True
@@ -28,7 +28,7 @@ time_steps = 100
 dt = 1/time_steps
 gamma = 0.1
 beta = 1.0
-
+mass = 1.0
 # Protocol parameters
 num_coefficients = 16
 a_endpoints = [5.0, 5.0]
@@ -39,8 +39,9 @@ samples_per_well = 2000
 training_iterations = 400
 learning_rate = 0.025
 alpha = 2.0  # endpoint_weight
-alpha_1 = 0.0  # var_weight
+alpha_1 = 0.1  # var_weight
 alpha_2 = 0.1  # work_weight
+alpha_3 = 5e-3  # smoothness_weight
 
 # Additional parameters
 spatial_dimensions = 1
@@ -75,6 +76,7 @@ potential = QuarticPotential()
 sim_engine = EulerMaruyama(
     mode='underdamped',
     gamma=gamma,
+    mass=mass,
     dt=dt
 )
 
@@ -90,6 +92,7 @@ loss = StandardLoss(
     endpoint_weight=alpha,
     work_weight=alpha_2,
     var_weight=alpha_1,
+    smoothness_weight=alpha_3,
     exponent=2
 )
 
@@ -131,6 +134,17 @@ if AIM_AVAILABLE:
     )
     callbacks.append(aim_callback)
 
+potential_landscape_callback = PotentialLandscapePlotCallback(
+    save_dir='figs',
+    plot_frequency=None
+)
+callbacks.append(potential_landscape_callback)
+
+coefficient_callback = CoefficientPlotCallback(
+    save_dir='figs',
+    plot_frequency=None
+)
+callbacks.append(coefficient_callback)
 # Instantiate Simulation
 simulation = Simulation(
     potential=potential,

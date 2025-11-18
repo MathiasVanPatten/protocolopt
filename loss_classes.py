@@ -2,7 +2,7 @@
 
 import torch
 from abc import ABC, abstractmethod
-from loss_methods import variance_loss, work_loss
+from loss_methods import variance_loss, work_loss, temporal_smoothness_penalty
 
 class TruthTableError(Exception):
     def __init__(self, message, path=''):
@@ -11,7 +11,7 @@ class TruthTableError(Exception):
 
 class Loss(ABC):
     @abstractmethod
-    def loss(self, potential_tensor, trajectory_tensor):
+    def loss(self, potential_tensor, trajectory_tensor, coeff_grid, dt):
         #potential_tensor is a tensor of shape (num_samples, spatial_dimensions, time_steps+1)
         #trajectory_tensor is a tensor of shape (num_samples, spatial_dimensions, time_steps+1, 2 (position and velocity))
         #you are expected to compute the loss for each sample in the batch such that the graph is not broken, return only the value of the loss for each sample
@@ -25,11 +25,11 @@ class Loss(ABC):
         #malliavian_weights are (num_samples, coeff_count, time_steps)
         return (loss_values[:,None, None] * malliavian_weights).mean(axis = 0)
 
-    def compute_FRR_gradient(self, potential_tensor, trajectory_tensor, malliavian_weights, return_loss_values = True):
+    def compute_FRR_gradient(self, potential_tensor, trajectory_tensor, malliavian_weights, coeff_grid, dt, return_loss_values = True):
         #loss is a tensor of shape (num_samples,)
         #malliavian_weights is a tensor of shape (num_samples, time_steps)
 
-        loss_values = self.loss(potential_tensor, trajectory_tensor)
+        loss_values = self.loss(potential_tensor, trajectory_tensor, coeff_grid, dt)
         self._compute_direct_grad(loss_values)
         malliavin_grad = self._compute_malliavin_grad(loss_values, malliavian_weights)
         if return_loss_values:
@@ -186,18 +186,20 @@ class EndpointLossBase(Loss):
 
 
 class StandardLoss(EndpointLossBase):
-    def __init__(self, midpoints, truth_table, bit_locations, endpoint_weight = 1, work_weight = 1, var_weight = 1, exponent = 2):
+    def __init__(self, midpoints, truth_table, bit_locations, endpoint_weight = 1, work_weight = 1, var_weight = 1, smoothness_weight = 1, exponent = 2):
         super().__init__(midpoints, truth_table, bit_locations, exponent)
         self.endpoint_weight = endpoint_weight
         self.work_weight = work_weight
         self.var_weight = var_weight
+        self.smoothness_weight = smoothness_weight
 
-    def loss(self, potential_tensor, trajectory_tensor):
+    def loss(self, potential_tensor, trajectory_tensor, coeff_grid, dt):
         # trajectory_tensor = trajectory_tensor.detach().requires_grad_(True)    
         starting_bits_int = self._compute_starting_bits_int(trajectory_tensor)
         endpoint_loss = self._endpoint_loss(trajectory_tensor)
         work_loss_value = work_loss(potential_tensor)
         var_loss_value = variance_loss(trajectory_tensor, starting_bits_int, self.domain)
+        smoothness_loss_value = temporal_smoothness_penalty(coeff_grid, dt)
         # bun = torch.autograd.grad(
         #     outputs = endpoint_loss.sum(),
         #     inputs = trajectory_tensor,
@@ -207,9 +209,10 @@ class StandardLoss(EndpointLossBase):
             self.endpoint_weight * endpoint_loss
             + self.work_weight * work_loss_value
             + self.var_weight * var_loss_value
+            + self.smoothness_weight * smoothness_loss_value
         )
     
-    def compute_loss_components(self, potential_tensor, trajectory_tensor):
+    def compute_loss_components(self, potential_tensor, trajectory_tensor, coeff_grid, dt):
         """
         Compute individual loss components for logging/analysis.
         
@@ -224,11 +227,13 @@ class StandardLoss(EndpointLossBase):
         endpoint_loss_val = self._endpoint_loss(trajectory_tensor)
         work_loss_val = work_loss(potential_tensor)
         var_loss_val = variance_loss(trajectory_tensor, starting_bits_int, self.domain)
+        smoothness_loss_val = temporal_smoothness_penalty(coeff_grid, dt)
         
         return {
             'endpoint_loss': endpoint_loss_val,
             'work_loss': work_loss_val,
-            'variance_loss': var_loss_val
+            'variance_loss': var_loss_val,
+            'smoothness_loss': smoothness_loss_val
         }
 
 if __name__ == '__main__':

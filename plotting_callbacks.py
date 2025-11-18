@@ -75,7 +75,7 @@ class TrajectoryPlotCallback(Callback):
         # Create separate plot for each spatial dimension
         for dim_idx in range(spatial_dimensions):
             # Extract position data for this dimension
-            trajectory_positions = trajectories[random_indices, dim_idx, :, 0].cpu().detach()
+            trajectory_positions = trajectories[random_indices, dim_idx, :, 0].cpu()
             
             fig = plt.figure()
             plt.plot(torch.linspace(0, time_steps, time_steps + 1).cpu(), trajectory_positions.T)
@@ -139,7 +139,7 @@ class ConfusionMatrixCallback(Callback):
             return  # Only works with EndpointLossBase-derived losses
         
         # Compute binary trajectory information
-        binary_trajectory_dict = loss_object.compute_binary_trajectory_info(sim_dict['trajectories'].detach())
+        binary_trajectory_dict = loss_object.compute_binary_trajectory_info(sim_dict['trajectories'])
         starting_bits_int = binary_trajectory_dict['starting_bits_int'].cpu().numpy()
         ending_bits_int = binary_trajectory_dict['ending_bits_int'].cpu().numpy()
         
@@ -148,7 +148,7 @@ class ConfusionMatrixCallback(Callback):
             return
         
         domain = loss_object.domain
-        validity = loss_object.validity.detach().cpu().numpy() 
+        validity = loss_object.validity.detach().cpu().numpy()
         
         # Create confusion matrix (counts)
         confusion_matrix = torch.zeros(domain, domain, dtype=torch.float32)
@@ -204,4 +204,185 @@ class ConfusionMatrixCallback(Callback):
         plt.tight_layout()
         self._log_or_save_figure(fig, 'confusion_matrix', epoch, simulation_object, dpi=150)
         plt.close()
+
+class PotentialLandscapePlotCallback(Callback):
+    
+    def __init__(self, save_dir='figs', plot_frequency=None, spatial_resolution=100, trajectories_per_bit=10):
+        self.save_dir = Path(save_dir)
+        self.plot_frequency = plot_frequency
+        self.spatial_resolution = spatial_resolution
+        self.trajectories_per_bit = trajectories_per_bit
+        self.total_epochs = None
+    
+    def _log_or_save_figure(self, fig, name, epoch, simulation_object, dpi=150):
+        aim_callback = next((cb for cb in simulation_object.callbacks 
+                            if type(cb).__name__ == 'AimCallback'), None)
+        
+        if AIM_AVAILABLE and aim_callback and hasattr(aim_callback, 'run') and aim_callback.run:
+            buf = io.BytesIO()
+            fig.savefig(buf, format='png', dpi=dpi)
+            buf.seek(0)
+            pil_image = Image.open(buf)
+            
+            aim_callback.run.track(AimImage(pil_image), name=name, epoch=epoch)
+            buf.close()
+        else:
+            self.save_dir.mkdir(parents=True, exist_ok=True)
+            filepath = self.save_dir / f'{name}_epoch_{epoch:04d}.png'
+            fig.savefig(filepath, dpi=dpi)
+    
+    def on_train_start(self, simulation_object):
+        self.total_epochs = simulation_object.epochs
+    
+    def on_epoch_end(self, simulation_object, sim_dict, loss_values, epoch):
+        should_plot = False
+        if self.plot_frequency is not None:
+            should_plot = (epoch % self.plot_frequency == 0) or (epoch == self.total_epochs - 1)
+        else:
+            if self.total_epochs is not None:
+                should_plot = (epoch % (self.total_epochs // 4) == 0) or (epoch == self.total_epochs - 1)
+        
+        if not should_plot:
+            return
+        
+        coeff_grid = sim_dict.get('coeff_grid', None)
+        if coeff_grid is None:
+            return
+        
+        trajectories = sim_dict['trajectories']
+        spatial_dimensions = simulation_object.spatial_dimensions
+        time_steps = simulation_object.time_steps
+        spatial_bounds = simulation_object.mcmc_starting_spatial_bounds
+        bit_locations = simulation_object.loss.bit_locations
+        potential_obj = simulation_object.potential
+        
+        for dim_idx in range(spatial_dimensions):
+            x_min, x_max = spatial_bounds[dim_idx, 0].item(), spatial_bounds[dim_idx, 1].item()
+            x_grid = torch.linspace(x_min, x_max, self.spatial_resolution, device=simulation_object.device)
+            t_indices = torch.arange(time_steps, device=simulation_object.device)
+            
+            potential_values = torch.zeros(self.spatial_resolution, time_steps)
+            for t_idx in range(time_steps):
+                coeff_slice = coeff_grid[:, t_idx]
+                potential_values[:, t_idx] = potential_obj.potential_value(x_grid, coeff_slice).cpu()
+            potential_values = potential_values.sign() * ((potential_values.abs() + 1).log10())
+            traj_positions = trajectories[:, dim_idx, :, 0]
+            
+            traj_min = traj_positions.min().item()
+            traj_max = traj_positions.max().item()
+            spatial_buffer = (traj_max - traj_min) * 0.2
+            
+            mask = (x_grid.cpu() >= (traj_min - spatial_buffer)) & (x_grid.cpu() <= (traj_max + spatial_buffer))
+            relevant_potential = potential_values[mask, :]
+            
+            v_min = torch.quantile(relevant_potential, 0.05).item()
+            v_max = torch.quantile(relevant_potential, 0.95).item()
+            start_positions = traj_positions[:, 0]
+            bit_locs_dim = bit_locations[:, dim_idx]
+            distances = torch.abs(start_positions[:, None] - bit_locs_dim[None, :])
+            bit_assignments = distances.argmin(dim=1)
+            
+            sampled_indices = []
+            num_bits = bit_locs_dim.shape[0]
+            for bit_idx in range(num_bits):
+                mask = (bit_assignments == bit_idx)
+                indices_in_class = torch.where(mask)[0]
+                if len(indices_in_class) > 0:
+                    num_to_sample = min(self.trajectories_per_bit, len(indices_in_class))
+                    sampled = indices_in_class[torch.randperm(len(indices_in_class))[:num_to_sample]]
+                    sampled_indices.append(sampled)
+            if len(sampled_indices) > 0:
+                sampled_indices = torch.cat(sampled_indices)
+            else:
+                sampled_indices = torch.tensor([], dtype=torch.long)
+            
+            fig, ax = plt.subplots(figsize=(10, 6))
+            im = ax.imshow(potential_values.T, aspect='auto', origin='lower', 
+                          extent=[x_min, x_max, 0, time_steps], cmap='plasma', 
+                          vmin=v_min, vmax=v_max)
+            ax.set_xlabel('Position')
+            ax.set_ylabel('Time')
+            ax.set_title(f'Potential Landscape - Dim {dim_idx} (Epoch {epoch})')
+            plt.colorbar(im, ax=ax, label='Potential Value')
+            
+            colors = plt.cm.tab10(np.arange(num_bits) % 10)
+            for idx in sampled_indices:
+                bit_class = bit_assignments[idx].item()
+                traj = traj_positions[idx].cpu().numpy()
+                time_array = np.linspace(0, time_steps, time_steps + 1)
+                ax.plot(traj, time_array, color=colors[bit_class], alpha=0.4, linewidth=0.8)
+            
+            self._log_or_save_figure(fig, f'potential_landscape_dim_{dim_idx}', epoch, simulation_object)
+            plt.close(fig)
+
+class CoefficientPlotCallback(Callback):
+    
+    def __init__(self, save_dir='figs', plot_frequency=None):
+        self.save_dir = Path(save_dir)
+        self.plot_frequency = plot_frequency
+        self.total_epochs = None
+    
+    def _log_or_save_figure(self, fig, name, epoch, simulation_object, dpi=150):
+        aim_callback = next((cb for cb in simulation_object.callbacks 
+                            if type(cb).__name__ == 'AimCallback'), None)
+        
+        if AIM_AVAILABLE and aim_callback and hasattr(aim_callback, 'run') and aim_callback.run:
+            buf = io.BytesIO()
+            fig.savefig(buf, format='png', dpi=dpi)
+            buf.seek(0)
+            pil_image = Image.open(buf)
+            
+            aim_callback.run.track(AimImage(pil_image), name=name, epoch=epoch)
+            buf.close()
+        else:
+            self.save_dir.mkdir(parents=True, exist_ok=True)
+            filepath = self.save_dir / f'{name}_epoch_{epoch:04d}.png'
+            fig.savefig(filepath, dpi=dpi)
+    
+    def on_train_start(self, simulation_object):
+        self.total_epochs = simulation_object.epochs
+    
+    def on_epoch_end(self, simulation_object, sim_dict, loss_values, epoch):
+        should_plot = False
+        if self.plot_frequency is not None:
+            should_plot = (epoch % self.plot_frequency == 0) or (epoch == self.total_epochs - 1)
+        else:
+            if self.total_epochs is not None:
+                should_plot = (epoch % (self.total_epochs // 4) == 0) or (epoch == self.total_epochs - 1)
+        
+        if not should_plot:
+            return
+        
+        coeff_grid = sim_dict.get('coeff_grid', None)
+        if coeff_grid is None:
+            return
+        
+        coeff_grid_cpu = coeff_grid.cpu().numpy()
+        coefficient_count, time_steps = coeff_grid_cpu.shape
+        time_array = np.arange(time_steps)
+        
+        if coefficient_count <= 4:
+            ncols = coefficient_count
+            nrows = 1
+        else:
+            ncols = 2
+            nrows = (coefficient_count + 1) // 2
+        
+        fig, axes = plt.subplots(nrows, ncols, figsize=(5*ncols, 4*nrows), squeeze=False)
+        axes = axes.flatten()
+        
+        for coeff_idx in range(coefficient_count):
+            ax = axes[coeff_idx]
+            ax.plot(time_array, coeff_grid_cpu[coeff_idx, :])
+            ax.set_xlabel('Time')
+            ax.set_ylabel(f'Coeff {coeff_idx}')
+            ax.set_title(f'Coefficient {coeff_idx}')
+            ax.grid(True, alpha=0.3)
+        
+        for idx in range(coefficient_count, len(axes)):
+            axes[idx].set_visible(False)
+        
+        plt.tight_layout()
+        self._log_or_save_figure(fig, 'coefficient_evolution', epoch, simulation_object)
+        plt.close(fig)
 
