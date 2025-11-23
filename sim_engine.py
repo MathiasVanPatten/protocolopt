@@ -55,8 +55,8 @@ class EulerMaruyama:
                 dv_dxda_list.append(dv_dxda)
             elif self.mode == 'overdamped':
                 #dv = 0
-                # dx = - 1/gam * dV/dx * dt + noise / gam
-                # dividing by the gamma to get the correct noise scaling from sqrt(2*k_b*T*gamma) to sqrt(2*k_B*T/gamma)
+                # dx = - gam * dV/dx * dt + noise
+                #in original code mu, mobility, was taken as gamma, unsure if correct
                 
                 current_pos = traj_pos_list[-1]
 
@@ -64,7 +64,7 @@ class EulerMaruyama:
                 U = potential.get_potential_value(current_pos, coeff_grid, i)
                 dv_dxda = potential.dv_dxda(current_pos, coeff_grid, i)
             
-                next_pos = current_pos - dv_dx * dt + noise[..., i].unsqueeze(-1)
+                next_pos = current_pos - dv_dx * dt * self.gamma + noise[..., i].unsqueeze(-1)
                 traj_pos_list.append(next_pos)
                 traj_vel_list.append(torch.zeros_like(next_pos))
                 potential_list.append(U.squeeze())

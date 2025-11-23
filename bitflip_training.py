@@ -144,6 +144,7 @@ coefficient_callback = CoefficientPlotCallback(
     save_dir='figs',
     plot_frequency=None
 )
+
 callbacks.append(coefficient_callback)
 # Instantiate Simulation
 simulation = Simulation(
