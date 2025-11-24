@@ -1,8 +1,6 @@
 #definition of the free paramters, defintion of the static setup
 import torch
-import math
 from tqdm import tqdm
-import itertools
 
 
 class Simulation:
@@ -16,7 +14,6 @@ class Simulation:
         self.spatial_dimensions = params.get('spatial_dimensions', 1)
         self.callbacks = callbacks
         self.time_steps = params.get('time_steps', 1000)
-        self.steps_per_spatial = params.get('steps_per_spatial', 100)
 
         self.beta = params.get('beta', 1.0)
         self.gamma = self.sim_engine.gamma

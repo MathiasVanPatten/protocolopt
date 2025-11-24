@@ -5,6 +5,7 @@ from potential_model import LinearPiecewise
 from sim_engine import EulerMaruyama
 from loss_classes import StandardLoss
 from simulation import Simulation
+from initial_condition_generator import ConditionalFlow, LaplaceApproximation
 from plotting_callbacks import TrajectoryPlotCallback, ConfusionMatrixCallback, PotentialLandscapePlotCallback, CoefficientPlotCallback
 try:
     from aim_callback import AimCallback
@@ -146,15 +147,48 @@ coefficient_callback = CoefficientPlotCallback(
 )
 
 callbacks.append(coefficient_callback)
+
+
+# init_cond_generator = ConditionalFlowBoltzmannGenerator(
+#     params=params,
+#     device=device,
+#     dt=dt,
+#     gamma=gamma,
+#     mass=mass
+# )
+
+init_cond_generator = LaplaceApproximation(
+    num_samples=3000,
+    centers=bit_locations,
+    dt=dt,
+    gamma=gamma,
+    mass=mass,
+    beta=beta,
+    spatial_dimensions=spatial_dimensions,
+    device=device,
+    time_steps=time_steps
+)
+
 # Instantiate Simulation
 simulation = Simulation(
     potential=potential,
     sim_engine=sim_engine,
     loss=loss,
     potential_model=potential_model,
+    initial_condition_generator=init_cond_generator,
     params=params,
     callbacks=callbacks
 )
+
+# Instantiate Simulation
+# simulation = Simulation(
+#     potential=potential,
+#     sim_engine=sim_engine,
+#     loss=loss,
+#     potential_model=potential_model,
+#     params=params,
+#     callbacks=callbacks
+# )
 
 if __name__ == '__main__':
     print("Starting bitflip training...")

@@ -79,10 +79,12 @@ class EulerMaruyama:
         if DEBUG_PRINT:
             print(f"Malliavin weight stats - mean: {self._compute_malliavian_weight(dv_dxda_tensor, noise, noise_sigma, dt).mean().item()}, std: {self._compute_malliavian_weight(dv_dxda_tensor, noise, noise_sigma, dt).std().item()}")
             print(f"dv_dxda_tensor stats - mean: {dv_dxda_tensor.mean().item()}, std: {dv_dxda_tensor.std().item()}, has nan: {torch.isnan(dv_dxda_tensor).any()}")
-        return {
+        output_dict = {
             'trajectories': torch.cat([traj_pos.unsqueeze(-1), traj_vel.unsqueeze(-1)], dim=-1),
             'potential': potential_tensor,
             'malliavian_weight': self._compute_malliavian_weight(dv_dxda_tensor, noise, noise_sigma, dt)
         }
+        return output_dict
+
     def debug_gradients(self, dv_dx, U, traj_pos_slice, traj_vel_slice, potential_tensor, dv_dxda_tensor):
         pass
