@@ -25,7 +25,7 @@ print(f"Using device: {device}")
 
 # Simulation parameters
 # time_steps = 100
-time_steps = 100 #overdamped
+time_steps = 1000 #overdamped
 dt = 1/time_steps
 # gamma = 0.1
 gamma = 1.0 #overdamped
@@ -37,7 +37,7 @@ a_endpoints = [10.0, 10.0]
 b_endpoints = [20.0, 20.0]
 c_endpoints = [0.0, 0.0]
 # Training parameters
-samples_per_well = 400 
+samples_per_well = 400
 training_iterations = 250
 learning_rate = 0.001
 alpha = 2.0  # endpoint_weight
