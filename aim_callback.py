@@ -58,6 +58,8 @@ class AimCallback(Callback):
         # Add MCMC parameters from generator if available
         if hasattr(simulation_object, 'init_cond_generator'):
             ic_gen = simulation_object.init_cond_generator
+            self.run['hparams']['ic_gen_type'] = type(ic_gen).__name__
+
             if hasattr(ic_gen, 'mcmc_warmup_ratio'):
                 self.run['hparams']['mcmc_warmup_ratio'] = ic_gen.mcmc_warmup_ratio
                 
@@ -69,6 +71,20 @@ class AimCallback(Callback):
             elif hasattr(ic_gen, 'mcmc_num_samples'):
                 self.run['hparams']['mcmc_num_samples'] = ic_gen.mcmc_num_samples
                 self.run['hparams']['sampling_mode'] = 'global'
+            elif hasattr(ic_gen, 'num_samples'):
+                 self.run['hparams']['num_samples'] = ic_gen.num_samples
+
+            # ConditionalFlow specific
+            if hasattr(ic_gen, 'flow_epochs'):
+                self.run['hparams']['flow_epochs'] = ic_gen.flow_epochs
+            if hasattr(ic_gen, 'flow_batch_size'):
+                self.run['hparams']['flow_batch_size'] = ic_gen.flow_batch_size
+            if hasattr(ic_gen, 'flow_training_samples_per_well'):
+                self.run['hparams']['flow_training_samples_per_well'] = ic_gen.flow_training_samples_per_well
+                
+            # Laplace specific
+            if hasattr(ic_gen, 'centers'):
+                 self.run['hparams']['num_centers'] = ic_gen.centers.shape[0] if torch.is_tensor(ic_gen.centers) else len(ic_gen.centers)
         
         # Log loss function parameters if available
         if hasattr(simulation_object.loss, 'endpoint_weight'):

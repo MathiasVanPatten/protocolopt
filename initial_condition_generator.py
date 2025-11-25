@@ -22,7 +22,7 @@ class InitialConditionGenerator(ABC):
 
 
 class McmNuts(InitialConditionGenerator):
-    def __init__(self, params, device, dt, gamma, mass, run_every_epoch = False):
+    def __init__(self, params, device):
         self.device = device
         self.spatial_dimensions = params.get('spatial_dimensions', 1)
         self.time_steps = params.get('time_steps', 1000)
@@ -36,12 +36,12 @@ class McmNuts(InitialConditionGenerator):
         else:
             self.mcmc_num_samples = self.samples_per_well * self.mcmc_chains_per_well * 2**self.spatial_dimensions
         self.beta = params.get('beta', 1.0)
-        self.gamma = gamma
-        self.dt = dt
+        self.gamma = params['gamma']
+        self.dt = params['dt']
         self.noise_sigma = torch.sqrt(torch.tensor(2 * self.gamma / self.beta))
-        self.mass = mass
+        self.mass = params['mass']
         self.starting_pos = None
-        if run_every_epoch:
+        if params.get('run_every_epoch', False):
             print("Warning: Running MCMC every epoch will be very slow and is not recommended for training. Please use the ConditionalFlowBoltzmannGenerator instead if your potential doesn't change at t0.")
 
     def _get_initial_velocities(self):
@@ -229,9 +229,9 @@ class ConditionalFlow(McmNuts, nn.Module):
     # An extension of the MCMC NUTS generator that trains a conditional flow model
     # to efficiently sample from an approximation of the posterior distribution every epoch 
     # far quicker than running MCMC every epoch
-    def __init__(self, params, device, dt, gamma, mass):
+    def __init__(self, params, device):
         nn.Module.__init__(self)
-        super().__init__(params, device, dt, gamma, mass)
+        super().__init__(params, device)
         if self.spatial_dimensions > 8:
             print('WARNING: when spatial dimensions are greater than 8 the number of samples is forced to 8 * samples_per_well and is taken randomly from the global bounds. You are NOT guaranteed to have samples from each well each epoch nor the normalizing flow to properly learn the entire bitstring space.')
             self.force_random = True
@@ -446,17 +446,27 @@ class ConditionalFlow(McmNuts, nn.Module):
         return initial_pos, initial_vel, noise
 
 class LaplaceApproximation(InitialConditionGenerator):
-    def __init__(self, num_samples, centers, dt, gamma, mass, beta, spatial_dimensions, time_steps, device):
+    def __init__(self, params, centers, device):
         self.centers = centers
-        self.num_samples = num_samples
-        self.dt = dt
-        self.gamma = gamma
-        self.mass = mass
-        self.beta = beta
-        self.noise_sigma = torch.sqrt(torch.tensor(2 * self.gamma / self.beta))
-        self.spatial_dimensions = spatial_dimensions
-        self.time_steps = time_steps
         self.device = device
+        self.dt = params['dt']
+        self.gamma = params['gamma']
+        self.mass = params['mass']
+        self.beta = params['beta']
+        self.spatial_dimensions = params.get('spatial_dimensions', 1)
+        self.time_steps = params.get('time_steps', 1000)
+        self.mcmc_starting_spatial_bounds = params.get('mcmc_starting_spatial_bounds', None)
+        
+        if 'num_samples' in params:
+            self.num_samples = params['num_samples']
+        elif 'mcmc_num_samples' in params:
+            self.num_samples = params['mcmc_num_samples']
+        elif 'samples_per_well' in params:
+             self.num_samples = params['samples_per_well'] * (2**self.spatial_dimensions)
+        else:
+             self.num_samples = 1000
+             
+        self.noise_sigma = torch.sqrt(torch.tensor(2 * self.gamma / self.beta))
 
     def _solve_landscape(self, potential, potential_model):
         coeff_at_t0 = potential_model.get_coeff_grid()[:, 0]

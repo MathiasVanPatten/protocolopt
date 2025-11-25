@@ -3,6 +3,7 @@
 import torch
 from abc import ABC, abstractmethod
 from loss_methods import variance_loss, work_loss, temporal_smoothness_penalty
+from torch.func import vmap, jacrev
 
 class TruthTableError(Exception):
     def __init__(self, message, path=''):
@@ -25,17 +26,41 @@ class Loss(ABC):
         #malliavian_weights are (num_samples, coeff_count, time_steps)
         return (loss_values[:,None, None] * malliavian_weights).mean(axis = 0)
 
-    def compute_FRR_gradient(self, potential_tensor, trajectory_tensor, malliavian_weights, coeff_grid, dt, return_loss_values = True):
-        #loss is a tensor of shape (num_samples,)
-        #malliavian_weights is a tensor of shape (num_samples, time_steps)
+    def compute_FRR_gradient(self, potential_obj, potential_tensor, trajectory_tensor, malliavian_weights, coeff_grid, dt):
+        pos_tensor_detached = trajectory_tensor[..., 0].detach()
+        # recompute to freeze the secondary reliance on the protocol through the trajectories
+        # we want dLoss/da where loss is given a trajectory and the mall weights carry the probability of the trajectory
 
-        loss_values = self.loss(potential_tensor, trajectory_tensor, coeff_grid, dt)
-        self._compute_direct_grad(loss_values)
-        malliavin_grad = self._compute_malliavin_grad(loss_values, malliavian_weights)
-        if return_loss_values:
-            return malliavin_grad, loss_values
-        else:
-            return malliavin_grad
+        clean_potential_list = [] 
+        for t in range(coeff_grid.shape[-1]):
+            c_t = coeff_grid[..., t] 
+            p_t = potential_obj.potential_value(pos_tensor_detached[..., t], c_t)
+            clean_potential_list.append(p_t)
+        
+        clean_potential_tensor = torch.stack(clean_potential_list, dim = -1)
+        loss_values_direct = self.loss(
+            clean_potential_tensor, 
+            trajectory_tensor.detach(), # detach to avoid double counting through the stochastic correction loss
+            coeff_grid, 
+            dt
+        )
+        direct_grad_scalar = loss_values_direct.mean()
+        
+        # direct loss for backwards, detach to avoid double counting through the stochastic correction loss
+        with torch.no_grad():
+            loss_values_for_scoring = self.loss(
+                potential_tensor,
+                trajectory_tensor, 
+                coeff_grid, 
+                dt
+            )
+
+        # Make sure the eventual backwards goes back through to the coeff grid and trainable params only
+        # Sum over (Coeffs, Time)
+        frr_term = (malliavian_weights.detach() * coeff_grid).sum(dim=(-2, -1))
+        surrogate_grad_scalar = (loss_values_for_scoring * frr_term).mean()
+        
+        return direct_grad_scalar + surrogate_grad_scalar, loss_values_for_scoring
 
 
 class EndpointLossBase(Loss):
@@ -175,16 +200,6 @@ class EndpointLossBase(Loss):
                     raise TruthTableError(f"Missing output for {bit}", current_bit_sequence + str(bit))
                 self.flattened_truth_table[int(current_bit_sequence + str(bit), base = 2)] = list_to_add
 
-    # def _validate_flattened_truth_table(self):
-    #     output_values = []
-    #     for k, v in self.flattened_truth_table.items():
-    #         output_values.extend(v)
-    #     missing = set(range(self.domain)) - set(output_values)
-    #     if missing:
-    #         missing_bin = [bin(x)[2:].zfill(len(self.midpoints)) for x in sorted(missing)]
-    #         raise ValueError(f"Missing output values: {missing_bin} (as binary), found at least one instance of {set(output_values)}")
-
-
 class StandardLoss(EndpointLossBase):
     def __init__(self, midpoints, truth_table, bit_locations, endpoint_weight = 1, work_weight = 1, var_weight = 1, smoothness_weight = 1, exponent = 2):
         super().__init__(midpoints, truth_table, bit_locations, exponent)
@@ -194,17 +209,12 @@ class StandardLoss(EndpointLossBase):
         self.smoothness_weight = smoothness_weight
 
     def loss(self, potential_tensor, trajectory_tensor, coeff_grid, dt):
-        # trajectory_tensor = trajectory_tensor.detach().requires_grad_(True)    
+
         starting_bits_int = self._compute_starting_bits_int(trajectory_tensor)
         endpoint_loss = self._endpoint_loss(trajectory_tensor)
         work_loss_value = work_loss(potential_tensor)
         var_loss_value = variance_loss(trajectory_tensor, starting_bits_int, self.domain)
         smoothness_loss_value = temporal_smoothness_penalty(coeff_grid, dt)
-        # bun = torch.autograd.grad(
-        #     outputs = endpoint_loss.sum(),
-        #     inputs = trajectory_tensor,
-        #     create_graph = True
-        # )[0]
         return (
             self.endpoint_weight * endpoint_loss
             + self.work_weight * work_loss_value

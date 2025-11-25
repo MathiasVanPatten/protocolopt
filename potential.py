@@ -1,7 +1,7 @@
 #intended to hold the task definition, where do we start, where do we end up?
 from typing import Any
 import torch
-#TODO finish type hinting
+from torch.func import vmap, grad, jacrev
 from abc import ABC, abstractmethod
 class Potential(ABC):
     @abstractmethod
@@ -12,42 +12,29 @@ class Potential(ABC):
         #NEVER detach self.potential_parms, use copy to not break the graph
         #control variables may be singular
         pass
+    def _get_kernels(self):
+        if not hasattr(self, '_kernel_force') or not hasattr(self, '_kernel_sensitivity'):
+            single_sample_dv_dx = grad(self.potential_value, argnums = 0)
+            self._dv_dx_batched = vmap(single_sample_dv_dx, in_dims = (0,None))
+
+            single_sample_dv_dxda = jacrev(single_sample_dv_dx, argnums = 1)
+            self._dv_dxda_batched = vmap(single_sample_dv_dxda, in_dims = (0,None))
+        return self._dv_dx_batched, self._dv_dxda_batched
 
     def get_potential_value(self, space_grid, coeff_grid, time_index):
         return self.potential_value(space_grid, coeff_grid[:, time_index])
 
     def dv_dx(self, space_grid, coeff_grid, time_index):
-        coeff_grid_slice = coeff_grid[:, time_index]
-        graphed_space_grid = space_grid.requires_grad_(True)
-        V = self.potential_value(graphed_space_grid, coeff_grid_slice)
-        dv_dx = torch.autograd.grad(
-            outputs = V,
-            inputs = graphed_space_grid,
-            grad_outputs = torch.ones_like(V),
-            create_graph = True
-        )[0]
-        return dv_dx
+        coeff = coeff_grid[:, time_index]
+        batch_dvdx_func, _ = self._get_kernels()
+        return batch_dvdx_func(space_grid, coeff)
 
     def dv_dxda(self, space_grid, coeff_grid, time_index):
-        coeff_for_grad = coeff_grid[:, time_index]
-        graphed_space_grid = space_grid.requires_grad_(True)
-        V = self.potential_value(graphed_space_grid, coeff_for_grad)
-
-        dV_dx = torch.autograd.grad(
-            outputs = V,
-            inputs = graphed_space_grid,
-            grad_outputs = torch.ones_like(V),
-            create_graph = True
-        )[0]
-        
-        dv_dxda = torch.autograd.grad(
-            outputs = dV_dx,
-            inputs = coeff_for_grad,
-            grad_outputs=torch.ones_like(dV_dx) / len(dV_dx), #use mean to aggregate gradients since params effect all trajs
-            create_graph = False
-        )[0]
-        
-        return dv_dxda
+        # computes sensitivity of gradient w.r.t coeffs
+        # used for malliavin weights
+        coeff = coeff_grid[:, time_index]
+        _, batch_dvdxda_func = self._get_kernels()
+        return batch_dvdxda_func(space_grid, coeff)
 
 class QuarticPotential(Potential):
     #the potential is V(x_i, t) = a_i(t) * x_i^4 - b_i(t) * x_i^2 for i in spatial dimensions

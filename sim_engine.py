@@ -14,8 +14,14 @@ class EulerMaruyama:
         self.mass = mass
         self.gamma = gamma
         
-    def _compute_malliavian_weight(self, dv_dxda, noise, noise_sigma, dt):
-        return (-dv_dxda * noise[:,None,:] / (noise_sigma ** 2))
+    def _compute_malliavian_weight(self, dv_dxda, noise, noise_sigma):
+        # dv_dxda: (samples, spatial, coeffs, time)
+        # noise: (samples, spatial, time)
+        # output: (samples, coeffs, time)
+        drift_grad = -dv_dxda
+        noise_expanded = noise[:,:,None,:] # (samples, spatial, expanded to effect all coeffs equally, time)
+        dot_product = (drift_grad * noise_expanded).sum(dim = 1) # (samples, coeffs, time)
+        return dot_product / (noise_sigma ** 2)
         
     def make_trajectories(self, potential, initial_pos, initial_vel, time_steps, noise, noise_sigma, coeff_grid, DEBUG_PRINT = False):
         #potential is a Potential object
@@ -77,12 +83,12 @@ class EulerMaruyama:
         dv_dxda_tensor = torch.stack(dv_dxda_list, dim=-1)  # (num_traj, coeff_count, time_steps)
 
         if DEBUG_PRINT:
-            print(f"Malliavin weight stats - mean: {self._compute_malliavian_weight(dv_dxda_tensor, noise, noise_sigma, dt).mean().item()}, std: {self._compute_malliavian_weight(dv_dxda_tensor, noise, noise_sigma, dt).std().item()}")
+            print(f"Malliavin weight stats - mean: {self._compute_malliavian_weight(dv_dxda_tensor, noise, noise_sigma).mean().item()}, std: {self._compute_malliavian_weight(dv_dxda_tensor, noise, noise_sigma, dt).std().item()}")
             print(f"dv_dxda_tensor stats - mean: {dv_dxda_tensor.mean().item()}, std: {dv_dxda_tensor.std().item()}, has nan: {torch.isnan(dv_dxda_tensor).any()}")
         output_dict = {
             'trajectories': torch.cat([traj_pos.unsqueeze(-1), traj_vel.unsqueeze(-1)], dim=-1),
             'potential': potential_tensor,
-            'malliavian_weight': self._compute_malliavian_weight(dv_dxda_tensor, noise, noise_sigma, dt)
+            'malliavian_weight': self._compute_malliavian_weight(dv_dxda_tensor, noise, noise_sigma)
         }
         return output_dict
 

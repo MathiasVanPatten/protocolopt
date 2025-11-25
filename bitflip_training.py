@@ -42,7 +42,7 @@ learning_rate = 0.025
 alpha = 2.0  # endpoint_weight
 alpha_1 = 0.1  # var_weight
 alpha_2 = 0.1  # work_weight
-alpha_3 = 5e-3  # smoothness_weight
+alpha_3 = 5e-4  # smoothness_weight
 
 # Additional parameters
 spatial_dimensions = 1
@@ -59,7 +59,7 @@ endpoints = torch.tensor([
 ], device=device)
 
 # Create initial coefficient guess
-initial_coeff_guess = torch.randn((2, num_coefficients), device=device)
+initial_coeff_guess = 0.1*torch.randn((2, num_coefficients), device=device)
 
 # Instantiate PotentialModel (LinearPiecewise)
 potential_model = LinearPiecewise(
@@ -107,7 +107,11 @@ params = {
     'mcmc_chains_per_well': 1,
     'beta': beta,
     'epochs': training_iterations,
-    'learning_rate': learning_rate
+    'learning_rate': learning_rate,
+    'dt': dt,
+    'gamma': gamma,
+    'mass': mass,
+    'num_samples': 3000
 }
 
 # Create callbacks
@@ -149,24 +153,15 @@ coefficient_callback = CoefficientPlotCallback(
 callbacks.append(coefficient_callback)
 
 
-# init_cond_generator = ConditionalFlowBoltzmannGenerator(
+# init_cond_generator = ConditionalFlow(
 #     params=params,
-#     device=device,
-#     dt=dt,
-#     gamma=gamma,
-#     mass=mass
+#     device=device
 # )
 
 init_cond_generator = LaplaceApproximation(
-    num_samples=3000,
+    params=params,
     centers=bit_locations,
-    dt=dt,
-    gamma=gamma,
-    mass=mass,
-    beta=beta,
-    spatial_dimensions=spatial_dimensions,
-    device=device,
-    time_steps=time_steps
+    device=device
 )
 
 # Instantiate Simulation
@@ -179,16 +174,6 @@ simulation = Simulation(
     params=params,
     callbacks=callbacks
 )
-
-# Instantiate Simulation
-# simulation = Simulation(
-#     potential=potential,
-#     sim_engine=sim_engine,
-#     loss=loss,
-#     potential_model=potential_model,
-#     params=params,
-#     callbacks=callbacks
-# )
 
 if __name__ == '__main__':
     print("Starting bitflip training...")

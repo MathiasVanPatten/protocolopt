@@ -5,6 +5,7 @@ from potential_model import LinearPiecewise
 from sim_engine import EulerMaruyama
 from loss_classes import StandardLoss
 from simulation import Simulation
+from initial_condition_generator import LaplaceApproximation
 from plotting_callbacks import TrajectoryPlotCallback, ConfusionMatrixCallback, PotentialLandscapePlotCallback, CoefficientPlotCallback
 try:
     from aim_callback import AimCallback
@@ -25,10 +26,10 @@ print(f"Using device: {device}")
 
 # Simulation parameters
 # time_steps = 100
-time_steps = 1000 #overdamped
+time_steps = 100 #overdamped
 dt = 1/time_steps
 # gamma = 0.1
-gamma = 1.0 #overdamped
+gamma = 5.0 #overdamped
 beta = 1.0
 
 # Protocol parameters
@@ -81,6 +82,7 @@ potential = QuarticPotentialWithLinearTerm()
 sim_engine = EulerMaruyama(
     mode='overdamped',
     gamma=gamma,
+    mass=1.0,
     dt=dt
 )
 
@@ -111,7 +113,10 @@ params = {
     'mcmc_chains_per_well': 1,
     'beta': beta,
     'epochs': training_iterations,
-    'learning_rate': learning_rate
+    'learning_rate': learning_rate,
+    'dt': dt,
+    'gamma': gamma,
+    'mass': 1.0 # default mass
 }
 
 # Create callbacks
@@ -150,12 +155,21 @@ coefficient_callback = CoefficientPlotCallback(
     plot_frequency=None
 )
 callbacks.append(coefficient_callback)
+
+# init_cond_generator = McmNuts(params, device)
+init_cond_generator = LaplaceApproximation(
+    params=params,
+    centers=bit_locations,
+    device=device
+)
+
 # Instantiate Simulation
 simulation = Simulation(
     potential=potential,
     sim_engine=sim_engine,
     loss=loss,
     potential_model=potential_model,
+    initial_condition_generator=init_cond_generator,
     params=params,
     callbacks=callbacks
 )
