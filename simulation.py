@@ -1,8 +1,6 @@
 #definition of the free paramters, defintion of the static setup
 import torch
-import math
 from tqdm import tqdm
-import itertools
 
 
 class Simulation:
@@ -16,7 +14,6 @@ class Simulation:
         self.spatial_dimensions = params.get('spatial_dimensions', 1)
         self.callbacks = callbacks
         self.time_steps = params.get('time_steps', 1000)
-        self.steps_per_spatial = params.get('steps_per_spatial', 100)
 
         self.beta = params.get('beta', 1.0)
         self.gamma = self.sim_engine.gamma
@@ -68,35 +65,22 @@ class Simulation:
                     callback.on_epoch_start(self, epoch)
 
                 self.optimizer.zero_grad()
+
                 sim_dict, coeff_grid = self.simulate()
-                dmw_dcoeff, loss_values = self.loss.compute_FRR_gradient(
+
+                total_loss, per_traj_loss = self.loss.compute_FRR_gradient( self.potential,
                     sim_dict['potential'], sim_dict['trajectories'], sim_dict['malliavian_weight'],
                     coeff_grid, self.dt
                 )
 
-                dmw_da = torch.autograd.grad(
-                    outputs = coeff_grid,
-                    inputs = self.potential_model.trainable_params(),
-                    grad_outputs = dmw_dcoeff,
-                    create_graph = False,
-                    allow_unused = True
-                )
+                total_loss.backward()
 
-                for param, grad in zip(self.potential_model.trainable_params(), dmw_da):
-                    if grad is not None:
-                        if param.grad is None:
-                            param.grad = grad
-                        else:
-                            if epoch % 10 == 0 or epoch == 0:
-                                print(f"Direct Grad: {param.grad}")
-                                print(f'Malliavin Grad: {grad}')
-                                print(f'Knot Locations are : {self.potential_model.trainable_params()[0]}')
-                            param.grad += grad 
+                if self.grad_clip_max_norm > 0:
+                    torch.nn.utils.clip_grad_norm_(self.potential_model.trainable_params(), self.grad_clip_max_norm)
 
-                torch.nn.utils.clip_grad_norm_(self.potential_model.trainable_params(), self.grad_clip_max_norm)
                 self.optimizer.step()
-                mean_loss = loss_values.mean().item()
-                pbar.set_postfix({'loss': mean_loss})
+
+                pbar.set_postfix({'loss': total_loss.item()})
                 
                 sim_dict_detached = {
                     'trajectories': sim_dict['trajectories'].detach(),
@@ -106,7 +90,7 @@ class Simulation:
                 }
                 
                 for callback in self.callbacks:
-                    callback.on_epoch_end(self, sim_dict_detached, loss_values, epoch)
+                    callback.on_epoch_end(self, sim_dict_detached, per_traj_loss, epoch)
         
         for callback in self.callbacks:
             callback.on_train_end(self, sim_dict, coeff_grid, epoch)

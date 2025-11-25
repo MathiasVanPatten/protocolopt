@@ -252,7 +252,22 @@ class PotentialLandscapePlotCallback(Callback):
         trajectories = sim_dict['trajectories']
         spatial_dimensions = simulation_object.spatial_dimensions
         time_steps = simulation_object.time_steps
-        spatial_bounds = simulation_object.mcmc_starting_spatial_bounds
+        spatial_bounds = getattr(simulation_object.init_cond_generator, 'mcmc_starting_spatial_bounds', None)
+        if spatial_bounds is None:
+            min_vals = trajectories[..., 0].min(dim=0)[0].min(dim=1)[0]
+            max_vals = trajectories[..., 0].max(dim=0)[0].max(dim=1)[0]
+            
+            centers = (max_vals + min_vals) / 2
+            spans = (max_vals - min_vals)
+            
+
+            spans = torch.maximum(spans, torch.tensor(1.0, device=simulation_object.device))
+
+            x_min_calc = centers - spans
+            x_max_calc = centers + spans
+            
+            spatial_bounds = torch.stack([x_min_calc, x_max_calc], dim=1)
+
         bit_locations = simulation_object.loss.bit_locations
         potential_obj = simulation_object.potential
         
@@ -261,10 +276,14 @@ class PotentialLandscapePlotCallback(Callback):
             x_grid = torch.linspace(x_min, x_max, self.spatial_resolution, device=simulation_object.device)
             t_indices = torch.arange(time_steps, device=simulation_object.device)
             
+            query_points = torch.zeros(self.spatial_resolution, spatial_dimensions, device=simulation_object.device)
+            query_points[:, dim_idx] = x_grid
+
             potential_values = torch.zeros(self.spatial_resolution, time_steps)
             for t_idx in range(time_steps):
                 coeff_slice = coeff_grid[:, t_idx]
-                potential_values[:, t_idx] = potential_obj.potential_value(x_grid, coeff_slice).cpu()
+                potential_values[:, t_idx] = potential_obj.potential_value(query_points, coeff_slice).cpu()
+            
             potential_values = potential_values.sign() * ((potential_values.abs() + 1).log10())
             traj_positions = trajectories[:, dim_idx, :, 0]
             
@@ -298,19 +317,25 @@ class PotentialLandscapePlotCallback(Callback):
             
             fig, ax = plt.subplots(figsize=(10, 6))
             im = ax.imshow(potential_values.T, aspect='auto', origin='lower', 
-                          extent=[x_min, x_max, 0, time_steps], cmap='plasma', 
+                          extent=[x_min, x_max, 0, time_steps], cmap='viridis', 
                           vmin=v_min, vmax=v_max)
             ax.set_xlabel('Position')
             ax.set_ylabel('Time')
             ax.set_title(f'Potential Landscape - Dim {dim_idx} (Epoch {epoch})')
-            plt.colorbar(im, ax=ax, label='Potential Value')
+            plt.colorbar(im, ax=ax, label='Signed log10(Potential Value)')
             
-            colors = plt.cm.tab10(np.arange(num_bits) % 10)
+            
+            high_contrast_colors = ['cyan', 'magenta', 'lime', 'orange', 'white']
+            
             for idx in sampled_indices:
                 bit_class = bit_assignments[idx].item()
                 traj = traj_positions[idx].cpu().numpy()
                 time_array = np.linspace(0, time_steps, time_steps + 1)
-                ax.plot(traj, time_array, color=colors[bit_class], alpha=0.4, linewidth=0.8)
+                
+                color_idx = bit_class % len(high_contrast_colors)
+                color = high_contrast_colors[color_idx]
+                
+                ax.plot(traj, time_array, color=color, alpha=0.8, linewidth=1.5)
             
             self._log_or_save_figure(fig, f'potential_landscape_dim_{dim_idx}', epoch, simulation_object)
             plt.close(fig)

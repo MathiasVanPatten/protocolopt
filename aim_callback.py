@@ -53,17 +53,38 @@ class AimCallback(Callback):
             'gamma': simulation_object.gamma,
             'dt': simulation_object.dt,
             'noise_sigma': simulation_object.noise_sigma.item() if torch.is_tensor(simulation_object.noise_sigma) else simulation_object.noise_sigma,
-            'mcmc_warmup_ratio': simulation_object.mcmc_warmup_ratio,
         }
         
-        # Add MCMC parameters based on mode
-        if simulation_object.samples_per_well is not None:
-            self.run['hparams']['samples_per_well'] = simulation_object.samples_per_well
-            self.run['hparams']['mcmc_chains_per_well'] = simulation_object.mcmc_chains_per_well
-            self.run['hparams']['sampling_mode'] = 'per_well'
-        else:
-            self.run['hparams']['mcmc_num_samples'] = simulation_object.mcmc_num_samples
-            self.run['hparams']['sampling_mode'] = 'global'
+        # Add MCMC parameters from generator if available
+        if hasattr(simulation_object, 'init_cond_generator'):
+            ic_gen = simulation_object.init_cond_generator
+            self.run['hparams']['ic_gen_type'] = type(ic_gen).__name__
+
+            if hasattr(ic_gen, 'mcmc_warmup_ratio'):
+                self.run['hparams']['mcmc_warmup_ratio'] = ic_gen.mcmc_warmup_ratio
+                
+            if hasattr(ic_gen, 'samples_per_well') and ic_gen.samples_per_well is not None:
+                self.run['hparams']['samples_per_well'] = ic_gen.samples_per_well
+                if hasattr(ic_gen, 'mcmc_chains_per_well'):
+                    self.run['hparams']['mcmc_chains_per_well'] = ic_gen.mcmc_chains_per_well
+                self.run['hparams']['sampling_mode'] = 'per_well'
+            elif hasattr(ic_gen, 'mcmc_num_samples'):
+                self.run['hparams']['mcmc_num_samples'] = ic_gen.mcmc_num_samples
+                self.run['hparams']['sampling_mode'] = 'global'
+            elif hasattr(ic_gen, 'num_samples'):
+                 self.run['hparams']['num_samples'] = ic_gen.num_samples
+
+            # ConditionalFlow specific
+            if hasattr(ic_gen, 'flow_epochs'):
+                self.run['hparams']['flow_epochs'] = ic_gen.flow_epochs
+            if hasattr(ic_gen, 'flow_batch_size'):
+                self.run['hparams']['flow_batch_size'] = ic_gen.flow_batch_size
+            if hasattr(ic_gen, 'flow_training_samples_per_well'):
+                self.run['hparams']['flow_training_samples_per_well'] = ic_gen.flow_training_samples_per_well
+                
+            # Laplace specific
+            if hasattr(ic_gen, 'centers'):
+                 self.run['hparams']['num_centers'] = ic_gen.centers.shape[0] if torch.is_tensor(ic_gen.centers) else len(ic_gen.centers)
         
         # Log loss function parameters if available
         if hasattr(simulation_object.loss, 'endpoint_weight'):
