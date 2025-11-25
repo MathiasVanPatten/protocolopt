@@ -26,10 +26,10 @@ print(f"Using device: {device}")
 
 # Simulation parameters
 # time_steps = 100
-time_steps = 100 #overdamped
+time_steps = 1000 #overdamped
 dt = 1/time_steps
 # gamma = 0.1
-gamma = 5.0 #overdamped
+gamma = 0.2 # in the paper they use 5 but overload the meaning of gamma when they meant mu (1/gamma) so 5 is 0.2
 beta = 1.0
 
 # Protocol parameters
@@ -38,9 +38,9 @@ a_endpoints = [10.0, 10.0]
 b_endpoints = [20.0, 20.0]
 c_endpoints = [0.0, 0.0]
 # Training parameters
-samples_per_well = 400
+samples_per_well = 3000
 training_iterations = 250
-learning_rate = 0.001
+learning_rate = 0.0001
 alpha = 2.0  # endpoint_weight
 alpha_1 = 0.1  # var_weight
 alpha_2 = 0.1  # work_weight
@@ -63,7 +63,7 @@ endpoints = torch.tensor([
 
 
 # Create initial coefficient guess
-initial_coeff_guess = 0.1 * torch.randn((endpoints.shape[0], num_coefficients), device=device)
+initial_coeff_guess = 0.01 * torch.randn((endpoints.shape[0], num_coefficients), device=device)
 # initial_coeff_guess = torch.zeros((endpoints.shape[0], num_coefficients), device=device)
 
 # Instantiate PotentialModel (LinearPiecewise)
@@ -76,14 +76,15 @@ potential_model = LinearPiecewise(
 )
 
 # Instantiate Potential (QuarticPotential)
-potential = QuarticPotentialWithLinearTerm()
+potential = QuarticPotentialWithLinearTerm(compile_mode=True)
 
 # Instantiate SimEngine (EulerMaruyama)
 sim_engine = EulerMaruyama(
     mode='overdamped',
     gamma=gamma,
     mass=1.0,
-    dt=dt
+    dt=dt,
+    compile_mode=True
 )
 
 # Create loss function (StandardLoss)

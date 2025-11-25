@@ -71,14 +71,15 @@ potential_model = LinearPiecewise(
 )
 
 # Instantiate Potential (QuarticPotential)
-potential = QuarticPotential()
+potential = QuarticPotential(compile_mode=True)
 
 # Instantiate SimEngine (EulerMaruyama)
 sim_engine = EulerMaruyama(
     mode='underdamped',
     gamma=gamma,
     mass=mass,
-    dt=dt
+    dt=dt,
+    compile_mode=True
 )
 
 # Create loss function (StandardLoss)

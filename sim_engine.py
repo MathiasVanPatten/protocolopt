@@ -3,17 +3,37 @@
 #either over or underdamped systems
 
 import torch
+import sys
+import os
+try:
+    from protocolopt.utils import robust_compile
+except ImportError:
+    # Fallback for when running script directly vs as module
+    from utils import robust_compile
 
 class EulerMaruyama:
-    def __init__(self, mode, gamma, mass = 1, dt = None) -> None:
-        #under or over
+    def __init__(self, mode, gamma, mass = 1, dt = None, compile_mode=True) -> None:
         if mode not in ['underdamped', 'overdamped']:
             raise ValueError(f"Invalid mode: {mode}, choose from 'underdamped' or 'overdamped'")
         self.mode = mode
         self.dt = dt
         self.mass = mass
         self.gamma = gamma
-        
+        self.compile_mode = compile_mode
+
+        self._compiled_underdamped_step = robust_compile(self._underdamped_step, compile_mode=self.compile_mode)
+        self._compiled_overdamped_step = robust_compile(self._overdamped_step, compile_mode=self.compile_mode)
+    
+    @staticmethod
+    def _overdamped_step(current_pos, dv_dx, noise, dt, gamma):
+        return current_pos - (dv_dx * dt - noise) / gamma
+
+    @staticmethod
+    def _underdamped_step(current_pos, current_vel, dv_dx, noise, dt, gamma, mass):
+        next_pos = current_pos + current_vel * dt
+        next_vel = (current_vel - gamma * current_vel * dt - dv_dx * dt + noise) / mass
+        return next_pos, next_vel
+
     def _compute_malliavian_weight(self, dv_dxda, noise, noise_sigma):
         # dv_dxda: (samples, spatial, coeffs, time)
         # noise: (samples, spatial, time)
@@ -52,9 +72,9 @@ class EulerMaruyama:
                 dv_dxda = potential.dv_dxda(current_pos, coeff_grid, i)
 
                 # Compute next positions and velocities
-                next_pos = current_pos + current_vel * dt
-                next_vel = (current_vel - self.gamma * current_vel * dt - dv_dx * dt + noise[..., i]) / self.mass
-                
+                next_pos, next_vel = self._compiled_underdamped_step(
+                                    current_pos, current_vel, dv_dx, noise[..., i], dt, self.gamma, self.mass
+                                )
                 traj_pos_list.append(next_pos)
                 traj_vel_list.append(next_vel)
                 potential_list.append(U.squeeze())
@@ -69,7 +89,7 @@ class EulerMaruyama:
                 U = potential.get_potential_value(current_pos, coeff_grid, i)
                 dv_dxda = potential.dv_dxda(current_pos, coeff_grid, i)
             
-                next_pos = current_pos - (dv_dx * dt - noise[..., i]) / self.gamma
+                next_pos = self._compiled_overdamped_step(current_pos, dv_dx, noise[..., i], dt, self.gamma)
                 traj_pos_list.append(next_pos)
                 traj_vel_list.append(torch.zeros_like(next_pos))
                 potential_list.append(U.squeeze())

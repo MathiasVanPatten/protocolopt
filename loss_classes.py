@@ -3,7 +3,7 @@
 import torch
 from abc import ABC, abstractmethod
 from loss_methods import variance_loss, work_loss, temporal_smoothness_penalty
-from torch.func import vmap, jacrev
+from torch.func import vmap
 
 class TruthTableError(Exception):
     def __init__(self, message, path=''):
@@ -30,20 +30,22 @@ class Loss(ABC):
         pos_tensor_detached = trajectory_tensor[..., 0].detach()
         # recompute to freeze the secondary reliance on the protocol through the trajectories
         # we want dLoss/da where loss is given a trajectory and the mall weights carry the probability of the trajectory
+        def potential_at_t(pos_t, coeff_t):
+            return potential_obj.potential_value(pos_t, coeff_t)
 
-        clean_potential_list = [] 
-        for t in range(coeff_grid.shape[-1]):
-            c_t = coeff_grid[..., t] 
-            p_t = potential_obj.potential_value(pos_tensor_detached[..., t], c_t)
-            clean_potential_list.append(p_t)
-        
-        clean_potential_tensor = torch.stack(clean_potential_list, dim = -1)
+        # in dims: (2,1) -> for arg 0 pos iterate over dim 2 time, for arg 1 coeff iterate over dim 1 which is time
+        # outdims: 1, put time at the end
+        batched_time_potential = vmap(potential_at_t, in_dims=(2, 1), out_dims=1)      
+
+        clean_potential_tensor = batched_time_potential(pos_tensor_detached[...,:-1], coeff_grid)
+
         loss_values_direct = self.loss(
             clean_potential_tensor, 
             trajectory_tensor.detach(), # detach to avoid double counting through the stochastic correction loss
             coeff_grid, 
             dt
         )
+
         direct_grad_scalar = loss_values_direct.mean()
         
         # direct loss for backwards, detach to avoid double counting through the stochastic correction loss

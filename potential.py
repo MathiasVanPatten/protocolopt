@@ -1,9 +1,19 @@
 #intended to hold the task definition, where do we start, where do we end up?
 from typing import Any
 import torch
+import sys
 from torch.func import vmap, grad, jacrev
 from abc import ABC, abstractmethod
+try:
+    from protocolopt.utils import robust_compile
+except ImportError:
+    # Fallback for when running script directly vs as module
+    from utils import robust_compile
+
 class Potential(ABC):
+    def __init__(self, compile_mode=True):
+        self.compile_mode = compile_mode
+
     @abstractmethod
     def potential_value(self, space_grid, coeff_grid):
         #you should accept a tensor (spatial dimensions) with a coefficient grid (coefficient counts, spatial dimensions) and return the potential value at each point
@@ -13,12 +23,17 @@ class Potential(ABC):
         #control variables may be singular
         pass
     def _get_kernels(self):
-        if not hasattr(self, '_kernel_force') or not hasattr(self, '_kernel_sensitivity'):
-            single_sample_dv_dx = grad(self.potential_value, argnums = 0)
-            self._dv_dx_batched = vmap(single_sample_dv_dx, in_dims = (0,None))
+        if not hasattr(self, '_dv_dx_batched') or not hasattr(self, '_dv_dxda_batched'):
+            single_sample_dv_dx = grad(self.potential_value, argnums=0)
+            batched_dv_dx = vmap(single_sample_dv_dx, in_dims=(0, None))
 
-            single_sample_dv_dxda = jacrev(single_sample_dv_dx, argnums = 1)
-            self._dv_dxda_batched = vmap(single_sample_dv_dxda, in_dims = (0,None))
+            single_sample_dv_dxda = jacrev(single_sample_dv_dx, argnums=1)
+            batched_dv_dxda = vmap(single_sample_dv_dxda, in_dims=(0, None))
+
+            self._dv_dx_batched = robust_compile(batched_dv_dx, compile_mode=self.compile_mode)
+            self._dv_dxda_batched = robust_compile(batched_dv_dxda, compile_mode=self.compile_mode)
+            
+
         return self._dv_dx_batched, self._dv_dxda_batched
 
     def get_potential_value(self, space_grid, coeff_grid, time_index):
