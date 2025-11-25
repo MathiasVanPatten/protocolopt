@@ -21,7 +21,7 @@ class InitialConditionGenerator(ABC):
         pass
 
 
-class McmNuts(InitialConditionGenerator):
+class McmcNuts(InitialConditionGenerator):
     def __init__(self, params, device):
         self.device = device
         self.spatial_dimensions = params.get('spatial_dimensions', 1)
@@ -225,7 +225,7 @@ class McmNuts(InitialConditionGenerator):
         return initial_pos, initial_vel, noise
 
 
-class ConditionalFlow(McmNuts, nn.Module):
+class ConditionalFlow(McmcNuts, nn.Module):
     # An extension of the MCMC NUTS generator that trains a conditional flow model
     # to efficiently sample from an approximation of the posterior distribution every epoch 
     # far quicker than running MCMC every epoch

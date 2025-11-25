@@ -67,7 +67,7 @@ class Loss(ABC):
 
 class EndpointLossBase(Loss):
     #all losses that need to hold state to evaluate the ending positions should inherit from this class
-    def __init__(self, midpoints, truth_table, bit_locations, exponent = 2): 
+    def __init__(self, midpoints, truth_table, bit_locations, exponent = 2, starting_bit_weights=None): 
         #midpoints only supports binary mapping currently, it should be a vector of midpoints for each spatial dimension
         #bit_locations is the ideal location of each bit for each spatial dimension, it's assumed that index 0 is the location of 0b0, index 1 is the location of 0b1, etc.
         #to the left of which is 0 and the right of which is 1. Exactly the mapping midpoint will be a 0
@@ -75,6 +75,8 @@ class EndpointLossBase(Loss):
         #with one input bit at a time as the keys with the innermost level showing the acceptable outputs for that bit configuration.
         #you must have a list of values, even if you only have one element
         #you must fully define the input/output space in a 1-Many or 1-1 enforced configuration
+        #starting_bit_weights: optional tensor of weights for each starting state (int representation). Shape should match domain size.
+
         #Example for NAND with 2 bits with the rightmost bit being used as the output:
         '''
             {
@@ -105,6 +107,7 @@ class EndpointLossBase(Loss):
         self.midpoints = midpoints
         self.bit_locations = bit_locations
         self.exponent = exponent
+        self.starting_bit_weights = starting_bit_weights
         self._validate_input_sequence_in_truth_table(truth_table)
         self.domain = 2**self._get_depth_of_truth_table(truth_table)
         self.flattened_truth_table = {k : None for k in range(self.domain)}
@@ -135,8 +138,16 @@ class EndpointLossBase(Loss):
         distances = torch.norm(ending_positions[:,None,:] - self.bit_locations[None,:,:], dim = -1, p = self.exponent)
         valid_mask = self.validity[starting_bits_int, :]
         masked_distances = torch.where(valid_mask, distances, torch.inf)
-        endpoint_loss = masked_distances.min(axis = -1).values
-        return endpoint_loss
+        
+        # Get minimum distance to a valid target state
+        min_distances = masked_distances.min(axis = -1).values
+        
+        # Apply starting bit weights if provided
+        if self.starting_bit_weights is not None:
+            weights = self.starting_bit_weights[starting_bits_int]
+            return min_distances * weights
+            
+        return min_distances
 
     # def loss(self, potential_tensor, trajectory_tensor):
     #     return self._endpoint_loss(trajectory_tensor)
@@ -203,8 +214,8 @@ class EndpointLossBase(Loss):
                 self.flattened_truth_table[int(current_bit_sequence + str(bit), base = 2)] = list_to_add
 
 class StandardLoss(EndpointLossBase):
-    def __init__(self, midpoints, truth_table, bit_locations, endpoint_weight = 1, work_weight = 1, var_weight = 1, smoothness_weight = 1, exponent = 2):
-        super().__init__(midpoints, truth_table, bit_locations, exponent)
+    def __init__(self, midpoints, truth_table, bit_locations, endpoint_weight = 1, work_weight = 1, var_weight = 1, smoothness_weight = 1, exponent = 2, starting_bit_weights=None):
+        super().__init__(midpoints, truth_table, bit_locations, exponent, starting_bit_weights)
         self.endpoint_weight = endpoint_weight
         self.work_weight = work_weight
         self.var_weight = var_weight

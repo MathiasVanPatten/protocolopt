@@ -5,7 +5,7 @@ from potential_model import LinearPiecewise
 from sim_engine import EulerMaruyama
 from loss_classes import StandardLoss
 from simulation import Simulation
-from initial_condition_generator import ConditionalFlow, LaplaceApproximation
+from initial_condition_generator import LaplaceApproximation
 from plotting_callbacks import TrajectoryPlotCallback, ConfusionMatrixCallback, PotentialLandscapePlotCallback, CoefficientPlotCallback
 try:
     from aim_callback import AimCallback
@@ -30,10 +30,29 @@ dt = 1/time_steps
 gamma = 0.1
 beta = 1.0
 mass = 1.0
+
 # Protocol parameters
-num_coefficients = 16
-a_endpoints = [5.0, 5.0]
-b_endpoints = [20.0, 20.0]
+spatial_dimensions = 2
+num_interactions = (spatial_dimensions * (spatial_dimensions - 1)) // 2
+coefficient_count = 3 * spatial_dimensions + num_interactions
+num_coefficients_time = 16
+
+# Define Endpoints
+endpoints_list = []
+
+# 1. Quartic (a): High walls at start/end
+for _ in range(spatial_dimensions): endpoints_list.append([5.0, 5.0]) 
+
+# 2. Quadratic (b): Standard wells
+for _ in range(spatial_dimensions): endpoints_list.append([10.0, 10.0])
+
+# 3. Linear (c): Neutral start/end
+for _ in range(spatial_dimensions): endpoints_list.append([0.0, 0.0])
+
+# 4. Interactions: Neutral start/end (Let it learn the twist!)
+for _ in range(num_interactions): endpoints_list.append([0.0, 0.0])
+
+endpoints = torch.tensor(endpoints_list, device=device)
 
 # Training parameters
 samples_per_well = 2000 
@@ -44,34 +63,42 @@ alpha_1 = 0.1  # var_weight
 alpha_2 = 0.1  # work_weight
 alpha_3 = 5e-4  # smoothness_weight
 
-# Additional parameters
-spatial_dimensions = 1
-mcmc_warmup_ratio = 0.1
-mcmc_starting_spatial_bounds = torch.tensor([[-5.0, 5.0]], device=device)
+guess_list = []
+target_mids = []
+for _ in range(spatial_dimensions): target_mids.append(1.0)
+for _ in range(spatial_dimensions): target_mids.append(2.0)
+for _ in range(spatial_dimensions): target_mids.append(0.0)
+for _ in range(num_interactions): target_mids.append(0.0)
 
-# Calculate centers
-centers = math.sqrt(b_endpoints[0] / (2 * a_endpoints[0]))
+for i in range(endpoints.shape[0]):
+    start_val = endpoints[i, 0]
+    end_val = endpoints[i, 1]
+    target_mid = target_mids[i]
+    
+    total_points = num_coefficients_time + 2
+    mid_idx = total_points // 2
+    
+    part1 = torch.linspace(start_val, target_mid, mid_idx + 1, device=device)
+    part2 = torch.linspace(target_mid, end_val, total_points - mid_idx, device=device)
 
-# Create endpoints tensor
-endpoints = torch.tensor([
-    [a_endpoints[0], a_endpoints[1]], 
-    [b_endpoints[0], b_endpoints[1]]
-], device=device)
+    full_path = torch.cat([part1[:-1], part2])
+    
+    guess_list.append(full_path[1:-1])
 
-# Create initial coefficient guess
-initial_coeff_guess = 0.1*torch.randn((2, num_coefficients), device=device)
+initial_coeff_guess = torch.stack(guess_list)
+initial_coeff_guess += 0.01 * torch.randn_like(initial_coeff_guess)
 
 # Instantiate PotentialModel (LinearPiecewise)
 potential_model = LinearPiecewise(
-    coefficient_count=2,
+    coefficient_count=coefficient_count,
     time_steps=time_steps,
-    knot_count=num_coefficients+2,
+    knot_count=num_coefficients_time+2,
     initial_coeff_guess=initial_coeff_guess,
     endpoints=endpoints
 )
 
 # Instantiate Potential (GeneralCoupledPotential)
-potential = GeneralCoupledPotential(spatial_dimensions=spatial_dimensions, has_c=False, compile_mode=True)
+potential = GeneralCoupledPotential(spatial_dimensions=spatial_dimensions, compile_mode=True)
 
 # Instantiate SimEngine (EulerMaruyama)
 sim_engine = EulerMaruyama(
@@ -83,9 +110,32 @@ sim_engine = EulerMaruyama(
 )
 
 # Create loss function (StandardLoss)
-midpoints = torch.tensor([0.0], device=device)
-bit_locations = torch.tensor([[-centers], [centers]], device=device)
-truth_table = {0: ['1'], 1: ['0']}
+midpoints = torch.tensor([0.0, 0.0], device=device)
+
+# bit_locations ordered 0 to 3 for integers 00, 01, 10, 11
+# -1 is 0, 1 is 1
+bit_locations = torch.tensor([
+    [-1.0, -1.0], # 00 (0)
+    [-1.0,  1.0], # 01 (1)
+    [ 1.0, -1.0], # 10 (2)
+    [ 1.0,  1.0]  # 11 (3)
+], device=device)
+
+# Strict NAND logic
+truth_table = {
+    0: {
+        0: ['11'],
+        1: ['11']
+    },
+    1: {
+        0: ['11'],
+        1: ['00', '10', '01']
+    }
+}
+
+# Weight the starting bit 11 (int 3) 3 times higher than others to prevent everything just going to 11
+starting_bit_weights = torch.ones(4, device=device)
+starting_bit_weights[3] = 3.0
 
 loss = StandardLoss(
     midpoints=midpoints,
@@ -95,7 +145,8 @@ loss = StandardLoss(
     work_weight=alpha_2,
     var_weight=alpha_1,
     smoothness_weight=alpha_3,
-    exponent=2
+    exponent=2,
+    starting_bit_weights=starting_bit_weights
 )
 
 # Build params dictionary for Simulation
@@ -103,16 +154,13 @@ params = {
     'spatial_dimensions': spatial_dimensions,
     'time_steps': time_steps,
     'samples_per_well': samples_per_well,
-    'mcmc_warmup_ratio': mcmc_warmup_ratio,
-    'mcmc_starting_spatial_bounds': mcmc_starting_spatial_bounds,
-    'mcmc_chains_per_well': 1,
     'beta': beta,
     'epochs': training_iterations,
     'learning_rate': learning_rate,
     'dt': dt,
     'gamma': gamma,
     'mass': mass,
-    'num_samples': 3000
+    'num_samples': 5000
 }
 
 # Create callbacks
@@ -135,7 +183,7 @@ callbacks.append(confusion_matrix_callback)
 # Add Aim callback if available
 if AIM_AVAILABLE:
     aim_callback = AimCallback(
-        experiment_name='bitflip_training',
+        experiment_name='nand_training',
         log_system_params=False
     )
     callbacks.append(aim_callback)
@@ -152,12 +200,6 @@ coefficient_callback = CoefficientPlotCallback(
 )
 
 callbacks.append(coefficient_callback)
-
-
-# init_cond_generator = ConditionalFlow(
-#     params=params,
-#     device=device
-# )
 
 init_cond_generator = LaplaceApproximation(
     params=params,
@@ -177,6 +219,6 @@ simulation = Simulation(
 )
 
 if __name__ == '__main__':
-    print("Starting bitflip training...")
+    print("Starting NAND training...")
     simulation.train()
     print("Training complete!")

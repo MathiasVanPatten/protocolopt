@@ -1,6 +1,6 @@
 import torch
 import math
-from potential import QuarticPotential, QuarticPotentialWithLinearTerm
+from potential import GeneralCoupledPotential
 from potential_model import LinearPiecewise
 from sim_engine import EulerMaruyama
 from loss_classes import StandardLoss
@@ -28,8 +28,7 @@ print(f"Using device: {device}")
 # time_steps = 100
 time_steps = 1000 #overdamped
 dt = 1/time_steps
-# gamma = 0.1
-gamma = 0.2 # in the paper they use 5 but overload the meaning of gamma when they meant mu (1/gamma) so 5 is 0.2
+gamma = 1.0
 beta = 1.0
 
 # Protocol parameters
@@ -40,11 +39,11 @@ c_endpoints = [0.0, 0.0]
 # Training parameters
 samples_per_well = 3000
 training_iterations = 250
-learning_rate = 0.0001
+learning_rate = 0.25
 alpha = 2.0  # endpoint_weight
 alpha_1 = 0.1  # var_weight
 alpha_2 = 0.1  # work_weight
-alpha_3 = 0  # smoothness_weight
+alpha_3 = 5e-4  # smoothness_weight
 
 # Additional parameters
 spatial_dimensions = 1
@@ -62,9 +61,31 @@ endpoints = torch.tensor([
 ], device=device)
 
 
-# Create initial coefficient guess
-initial_coeff_guess = 0.01 * torch.randn((endpoints.shape[0], num_coefficients), device=device)
-# initial_coeff_guess = torch.zeros((endpoints.shape[0], num_coefficients), device=device)
+guess_list = []
+for i in range(endpoints.shape[0]):
+    start_val = endpoints[i, 0]
+    end_val = endpoints[i, 1]
+    
+    if i == 0: #a
+        target_mid = 1.0
+    elif i == 1: #b
+        target_mid = 2.0
+    else: #c
+        target_mid = 0.0
+        
+    total_points = num_coefficients + 2
+    mid_idx = total_points // 2
+    
+    part1 = torch.linspace(start_val, target_mid, mid_idx + 1, device=device)
+    part2 = torch.linspace(target_mid, end_val, total_points - mid_idx, device=device)
+
+    full_path = torch.cat([part1[:-1], part2])
+    
+    guess_list.append(full_path[1:-1])
+
+initial_coeff_guess = torch.stack(guess_list)
+
+initial_coeff_guess += 0.01 * torch.randn_like(initial_coeff_guess)
 
 # Instantiate PotentialModel (LinearPiecewise)
 potential_model = LinearPiecewise(
@@ -75,8 +96,8 @@ potential_model = LinearPiecewise(
     endpoints=endpoints
 )
 
-# Instantiate Potential (QuarticPotential)
-potential = QuarticPotentialWithLinearTerm(compile_mode=True)
+# Instantiate Potential (GeneralCoupledPotential)
+potential = GeneralCoupledPotential(spatial_dimensions=spatial_dimensions, has_c=True, compile_mode=True)
 
 # Instantiate SimEngine (EulerMaruyama)
 sim_engine = EulerMaruyama(
@@ -107,8 +128,7 @@ loss = StandardLoss(
 params = {
     'spatial_dimensions': spatial_dimensions,
     'time_steps': time_steps,
-    'samples_per_well': samples_per_well,  # Use new per-well sampling mode
-    # 'mcmc_num_samples': batch_size,  # Fallback for legacy mode
+    'samples_per_well': samples_per_well,
     'mcmc_warmup_ratio': mcmc_warmup_ratio,
     'mcmc_starting_spatial_bounds': mcmc_starting_spatial_bounds,
     'mcmc_chains_per_well': 1,
@@ -157,7 +177,7 @@ coefficient_callback = CoefficientPlotCallback(
 )
 callbacks.append(coefficient_callback)
 
-# init_cond_generator = McmNuts(params, device)
+# init_cond_generator = McmcNuts(params, device)
 init_cond_generator = LaplaceApproximation(
     params=params,
     centers=bit_locations,
