@@ -1,0 +1,15 @@
+name: protocolopt
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pytorch>=2.9.1
+  - tqdm
+  - matplotlib
+  - pillow
+  - numpy
+  - pyro-ppl
+  - aim
+  - pip
