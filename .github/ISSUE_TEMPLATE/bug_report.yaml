@@ -1,0 +1,43 @@
+name: Bug Report
+description: Create a report to help me improve this project.
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please fill out the sections below.
+  - type: input
+    id: version
+    attributes:
+      label: Software Version
+      description: What version or branch are you running? (e.g., v1.0.2, mathias_branch, commit hash)
+      placeholder: v1.0.0
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear and concise description of what the bug is.
+      placeholder: When I run X function, Y happens instead of Z.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal Reproducible Example
+      description: Please provide a code snippet or sequence of steps that reliably reproduces the issue.
+      placeholder: |
+        1. Run config 'A'
+        2. Execute command 'B'
+        3. See error...
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Log Output
+      description: Please copy and paste any relevant log output.
+      render: shell
