@@ -1,22 +1,34 @@
 import torch
-import torch.nn.functional as F
 from abc import ABC, abstractmethod
+from typing import List
 
 class Protocol(ABC):
-    #potential models use any kind of differentiable math to go from a set
-    #of trainable parameters to a full tensor of values to be used in the potential
+    """Abstract base class for time-dependent protocols (coefficients)."""
 
-    #fixed starting is a boolean, if True the starting potential is fixed and the mcmc sampler will only do warmup once
-    def __init__(self, time_steps, fixed_starting) -> None:
+    def __init__(self, time_steps: int, fixed_starting: bool) -> None:
+        """Initializes the Protocol.
+
+        Args:
+            time_steps: The number of time steps in the protocol.
+            fixed_starting: If True, the starting configuration is fixed and not trainable/random.
+        """
         self.time_steps = time_steps
         self.fixed_starting = fixed_starting
 
     @abstractmethod
-    def get_coeff_grid(self):
-        #return a tensor of shape (coefficients, spatial dimensions, time)
+    def get_coeff_grid(self) -> torch.Tensor:
+        """Returns the full grid of coefficients over time.
+
+        Returns:
+            A tensor of coefficients. Shape: (Num_Coeffs, Time_Steps).
+        """
         pass
 
     @abstractmethod
-    def trainable_params(self):
-        # return the parameters you want attached to the optimizer as a list
+    def trainable_params(self) -> List[torch.nn.Parameter]:
+        """Returns the list of trainable parameters for the optimizer.
+
+        Returns:
+            A list of torch.nn.Parameter objects.
+        """
         pass

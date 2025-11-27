@@ -4,7 +4,7 @@ from protocolopt.potentials import GeneralCoupledPotential
 from protocolopt.protocols import LinearPiecewise
 from protocolopt.simulators import EulerMaruyama
 from protocolopt.losses import StandardLoss
-from protocolopt.core.simulation import Simulation
+from protocolopt import Simulation
 from protocolopt.sampling import ConditionalFlow, LaplaceApproximation
 from protocolopt.callbacks import TrajectoryPlotCallback, ConfusionMatrixCallback, PotentialLandscapePlotCallback, CoefficientPlotCallback
 try:

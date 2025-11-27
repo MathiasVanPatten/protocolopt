@@ -5,12 +5,21 @@ import pyro.distributions.transforms as T
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
+from typing import Dict, Any, Tuple
+from ..core.potential import Potential
+from ..core.protocol import Protocol
+from ..core.loss import Loss
 
 class ConditionalFlow(McmcNuts, nn.Module):
-    # An extension of the MCMC NUTS generator that trains a conditional flow model
-    # to efficiently sample from an approximation of the posterior distribution every epoch
-    # far quicker than running MCMC every epoch
-    def __init__(self, params, device):
+    """Initial condition generator using a Conditional Normalizing Flow trained on MCMC samples."""
+
+    def __init__(self, params: Dict[str, Any], device: torch.device) -> None:
+        """Initializes the ConditionalFlow generator.
+
+        Args:
+            params: Configuration dictionary.
+            device: Torch device.
+        """
         nn.Module.__init__(self)
         super().__init__(params, device)
         if self.spatial_dimensions > 8:
@@ -55,7 +64,13 @@ class ConditionalFlow(McmcNuts, nn.Module):
         self.flow_training_well_count = 2**self.spatial_dimensions
         self.flow_training_samples_per_well = params.get('flow_training_samples_per_well', 500)
 
-    def set_bounds_from_bits(self, target_bitstring, loss):
+    def set_bounds_from_bits(self, target_bitstring: torch.Tensor, loss: Loss) -> None:
+        """Updates sampling bounds to target a specific bitstring well.
+
+        Args:
+            target_bitstring: Tensor representing the target bitstring (e.g., [0, 1]).
+            loss: Loss object containing midpoint information.
+        """
         if not hasattr(loss, 'midpoints'):
             raise RuntimeError("Loss object must have .midpoints to define wells.")
 
@@ -82,7 +97,8 @@ class ConditionalFlow(McmcNuts, nn.Module):
         # runs the parent class in global mode on this subset, basically redoing the per well logic but packed in a way the flow model needs to learn from
         self.samples_per_well = None
 
-    def _train_flow(self, potential, protocol, loss):
+    def _train_flow(self, potential: Potential, protocol: Protocol, loss: Loss) -> None:
+        """Trains the normalizing flow on MCMC samples."""
         print(f"Generating training data for {self.flow_training_well_count} random wells using inherited NUTS...")
 
         # save the original number of samples and bounds
@@ -176,7 +192,17 @@ class ConditionalFlow(McmcNuts, nn.Module):
             self.mcmc_starting_spatial_bounds = original_bounds_backup
             self.mcmc_num_samples = original_mcmc_num_samples
 
-    def generate_initial_conditions(self, potential, protocol, loss):
+    def generate_initial_conditions(self, potential: Potential, protocol: Protocol, loss: Loss) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Generates initial conditions using the trained flow model.
+
+        Args:
+            potential: The potential energy object.
+            protocol: The protocol object.
+            loss: The loss object.
+
+        Returns:
+            Tuple of (initial_pos, initial_vel, noise).
+        """
         if not self.is_trained:
              self._train_flow(potential, protocol, loss)
 

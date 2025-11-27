@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Tuple, Optional
 import torch
 import sys
 from torch.func import vmap, grad, jacrev
@@ -6,17 +6,29 @@ from abc import ABC, abstractmethod
 from ..utils import robust_compile
 
 class Potential(ABC):
-    def __init__(self, compile_mode=True):
+    """Abstract base class for potential energy landscapes."""
+
+    def __init__(self, compile_mode: bool = True):
+        """Initializes the Potential.
+
+        Args:
+            compile_mode: Whether to try compiling the gradient functions.
+        """
         self.compile_mode = compile_mode
 
     @abstractmethod
-    def potential_value(self, space_grid, coeff_grid):
-        #you should accept a tensor (spatial dimensions) with a coefficient grid (coefficient counts, spatial dimensions) and return the potential value at each point
-        #do not detach from the graph, the protocol will automatically check
-        #access potential parameters (control variables, spatial dimensions, time) with self.potential_params
-        #NEVER detach self.potential_parms, use copy to not break the graph
-        #control variables may be singular
+    def potential_value(self, space_grid: torch.Tensor, coeff_grid: torch.Tensor) -> torch.Tensor:
+        """Computes the potential energy value.
+
+        Args:
+            space_grid: The spatial coordinates. Shape: (Batch, Spatial_Dim) or (Spatial_Dim,).
+            coeff_grid: The coefficients for the potential. Shape: (Num_Coeffs,).
+
+        Returns:
+            The potential energy at each point. Shape: (Batch,) or scalar.
+        """
         pass
+
     def _get_kernels(self):
         if not hasattr(self, '_dv_dx_batched') or not hasattr(self, '_dv_dxda_batched'):
             single_sample_dv_dx = grad(self.potential_value, argnums=0)
@@ -31,17 +43,18 @@ class Potential(ABC):
 
         return self._dv_dx_batched, self._dv_dxda_batched
 
-    def get_potential_value(self, space_grid, coeff_grid, time_index):
+    def get_potential_value(self, space_grid: torch.Tensor, coeff_grid: torch.Tensor, time_index: int) -> torch.Tensor:
+        """Helper to get potential value at a specific time index."""
         return self.potential_value(space_grid, coeff_grid[:, time_index])
 
-    def dv_dx(self, space_grid, coeff_grid, time_index):
+    def dv_dx(self, space_grid: torch.Tensor, coeff_grid: torch.Tensor, time_index: int) -> torch.Tensor:
+        """Computes the gradient of the potential with respect to spatial coordinates."""
         coeff = coeff_grid[:, time_index]
         batch_dvdx_func, _ = self._get_kernels()
         return batch_dvdx_func(space_grid, coeff)
 
-    def dv_dxda(self, space_grid, coeff_grid, time_index):
-        # computes sensitivity of gradient w.r.t coeffs
-        # used for malliavin weights
+    def dv_dxda(self, space_grid: torch.Tensor, coeff_grid: torch.Tensor, time_index: int) -> torch.Tensor:
+        """Computes the sensitivity of the gradient with respect to coefficients."""
         coeff = coeff_grid[:, time_index]
         _, batch_dvdxda_func = self._get_kernels()
         return batch_dvdxda_func(space_grid, coeff)

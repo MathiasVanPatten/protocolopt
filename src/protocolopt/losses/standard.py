@@ -1,10 +1,22 @@
 from ..core.loss import Loss, TruthTableError
 from .functional import variance_loss, work_loss, temporal_smoothness_penalty
+from typing import Dict, Optional, Union, List
 import torch
 
 class EndpointLossBase(Loss):
-    #all losses that need to hold state to evaluate the ending positions should inherit from this class
-    def __init__(self, midpoints, truth_table, bit_locations, exponent = 2, starting_bit_weights=None): 
+    """Base class for losses that depend on the final state of the trajectory relative to target bits."""
+
+    def __init__(self, midpoints: torch.Tensor, truth_table: Dict[int, Union[List[str], Dict]], bit_locations: torch.Tensor, exponent: int = 2, starting_bit_weights: Optional[torch.Tensor] = None):
+        """Initializes the EndpointLossBase.
+
+        Args:
+            midpoints: Midpoints defining bit boundaries in each spatial dimension.
+            truth_table: Dictionary defining valid transitions.
+                Structure: {input_bit_int: {input_bit_int_next_dim: ... [valid_output_bit_strings]}} or similar recursive structure.
+            bit_locations: Target locations for each bit configuration.
+            exponent: Exponent for the distance metric (p-norm).
+            starting_bit_weights: Weights for each starting state.
+        """
         #midpoints only supports binary mapping currently, it should be a vector of midpoints for each spatial dimension
         #bit_locations is the ideal location of each bit for each spatial dimension, it's assumed that index 0 is the location of 0b0, index 1 is the location of 0b1, etc.
         #to the left of which is 0 and the right of which is 1. Exactly the mapping midpoint will be a 0
@@ -151,15 +163,30 @@ class EndpointLossBase(Loss):
                 self.flattened_truth_table[int(current_bit_sequence + str(bit), base = 2)] = list_to_add
 
 class StandardLoss(EndpointLossBase):
+    """Standard loss function combining endpoint error, work, variance, and smoothness."""
+
     def __init__(self, midpoints, truth_table, bit_locations, endpoint_weight = 1, work_weight = 1, var_weight = 1, smoothness_weight = 1, exponent = 2, starting_bit_weights=None):
+        """Initializes StandardLoss.
+
+        Args:
+            midpoints: Bit boundaries.
+            truth_table: Valid transitions.
+            bit_locations: Target locations.
+            endpoint_weight: Weight for endpoint loss.
+            work_weight: Weight for work loss.
+            var_weight: Weight for variance loss.
+            smoothness_weight: Weight for smoothness penalty.
+            exponent: Exponent for distance.
+            starting_bit_weights: Weights for starting bits.
+        """
         super().__init__(midpoints, truth_table, bit_locations, exponent, starting_bit_weights)
         self.endpoint_weight = endpoint_weight
         self.work_weight = work_weight
         self.var_weight = var_weight
         self.smoothness_weight = smoothness_weight
 
-    def loss(self, potential_tensor, trajectory_tensor, coeff_grid, dt):
-
+    def loss(self, potential_tensor: torch.Tensor, trajectory_tensor: torch.Tensor, coeff_grid: torch.Tensor, dt: float) -> torch.Tensor:
+        """Computes the combined loss."""
         starting_bits_int = self._compute_starting_bits_int(trajectory_tensor)
         endpoint_loss = self._endpoint_loss(trajectory_tensor)
         work_loss_value = work_loss(potential_tensor)

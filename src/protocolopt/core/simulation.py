@@ -1,35 +1,91 @@
 #definition of the free paramters, defintion of the static setup
 import torch
 from tqdm import tqdm
-
+from typing import Dict, Any, List, Optional, Union
+from .config import SimulationConfig
+from ..utils import logger
+from .potential import Potential
+from .simulator import Simulator
+from .loss import Loss
+from .protocol import Protocol
+from .sampling import InitialConditionGenerator
+from .callback import Callback
 
 class Simulation:
-    def __init__(self, potential, simulator, loss, protocol, initial_condition_generator, params, callbacks = []) -> None:
+    """The main orchestrator for running simulations and training protocols."""
+
+    def __init__(
+        self,
+        potential: Potential,
+        simulator: Simulator,
+        loss: Loss,
+        protocol: Protocol,
+        initial_condition_generator: InitialConditionGenerator,
+        params: Union[SimulationConfig, Dict[str, Any]],
+        callbacks: List[Callback] = []
+    ) -> None:
+        """Initializes the Simulation.
+
+        Args:
+            potential: The potential energy landscape.
+            simulator: The simulation engine (e.g., EulerMaruyama).
+            loss: The loss function to minimize.
+            protocol: The time-dependent protocol model.
+            initial_condition_generator: Generator for starting states.
+            params: Configuration parameters. Can be a dict or SimulationConfig object.
+            callbacks: List of callbacks to run during training.
+        """
         self.potential = potential
         self.simulator = simulator
         self.loss = loss
         self.protocol = protocol
         self.init_cond_generator = initial_condition_generator
-        self.device = self.protocol.device
-        self.spatial_dimensions = params.get('spatial_dimensions', 1)
+        self.device = getattr(self.protocol, 'device', torch.device('cpu'))
         self.callbacks = callbacks
-        self.time_steps = params.get('time_steps', 1000)
 
-        self.beta = params.get('beta', 1.0)
-        self.gamma = self.simulator.gamma
-        self.dt = self.simulator.dt
-        #NOTE WHEN NOISE IS GIVEN TO SIMULATE THE NOISE SIGMA WILL STILL BE SET AS IT WAS DURING TRAINING, POSSIBLY AN ISSUE
+        if isinstance(params, dict):
+            self.config = SimulationConfig.from_dict(params)
+        else:
+            self.config = params
+
+        self.spatial_dimensions = self.config.spatial_dimensions
+        self.time_steps = self.config.time_steps
+        self.epochs = self.config.epochs
+        self.learning_rate = self.config.learning_rate
+        self.beta = self.config.beta
+        self.grad_clip_max_norm = self.config.grad_clip_max_norm
+
+        # Simulator params override config if present in simulator
+        self.gamma = getattr(self.simulator, 'gamma', self.config.gamma)
+        self.dt = getattr(self.simulator, 'dt', self.config.dt)
+        if self.dt is None:
+             self.dt = 1.0 / self.time_steps
 
         self.noise_sigma = torch.sqrt(torch.tensor(2 * self.gamma / self.beta))
-        self.epochs = params.get('epochs', 100)
-        self.learning_rate = params.get('learning_rate', 0.001)
-        self.grad_clip_max_norm = params.get('grad_clip_max_norm', 1.0)
+
         if self.protocol.fixed_starting:
             self.init_cond_generator.generate_initial_conditions(self.potential, self.protocol, self.loss)
 
-    def simulate(self, manual_inital_pos = None, manual_initial_vel = None, manual_noise = None, DEBUG_PRINT = False):
+    def simulate(
+        self,
+        manual_inital_pos: Optional[torch.Tensor] = None,
+        manual_initial_vel: Optional[torch.Tensor] = None,
+        manual_noise: Optional[torch.Tensor] = None,
+        debug_print: bool = False
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Runs a single simulation batch.
+
+        Args:
+            manual_inital_pos: Optional override for initial positions.
+            manual_initial_vel: Optional override for initial velocities.
+            manual_noise: Optional override for noise.
+            debug_print: Whether to print debug info from simulator.
+
+        Returns:
+            A tuple of (trajectories, potential_val, malliavian_weight, coeff_grid).
+        """
         initial_pos, initial_vel, noise = self.init_cond_generator.generate_initial_conditions(self.potential, self.protocol, self.loss)
-        
+
         if manual_inital_pos is not None:
             initial_pos = manual_inital_pos
         if manual_initial_vel is not None:
@@ -47,7 +103,7 @@ class Simulation:
             noise,
             self.noise_sigma,
             coeff_grid,
-            DEBUG_PRINT = DEBUG_PRINT
+            debug_print = debug_print
         )
 
         return trajectories, potential_val, malliavian_weight, coeff_grid
@@ -55,7 +111,8 @@ class Simulation:
     def _setup_optimizer(self, optimizer_class = torch.optim.Adam):
         self.optimizer = optimizer_class(self.protocol.trainable_params(), lr=self.learning_rate)
 
-    def train(self):
+    def train(self) -> None:
+        """Runs the training loop."""
         self._setup_optimizer()
 
         for callback in self.callbacks:
@@ -84,17 +141,17 @@ class Simulation:
                 self.optimizer.step()
 
                 pbar.set_postfix({'loss': total_loss.item()})
-                
+
                 sim_dict_detached = {
                     'trajectories': trajectories.detach(),
                     'potential': potential_val.detach(),
                     'malliavian_weight': malliavian_weight.detach(),
                     'coeff_grid': coeff_grid.detach()
                 }
-                
+
                 for callback in self.callbacks:
                     callback.on_epoch_end(self, sim_dict_detached, per_traj_loss, epoch)
-        
+
         # Reconstruct sim_dict for train_end callback
         sim_dict = {
             'trajectories': trajectories,
@@ -103,5 +160,5 @@ class Simulation:
         }
         for callback in self.callbacks:
             callback.on_train_end(self, sim_dict, coeff_grid, epoch)
-        
-        print('Training complete')
+
+        logger.info('Training complete')

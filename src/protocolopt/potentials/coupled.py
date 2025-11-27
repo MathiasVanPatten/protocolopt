@@ -1,8 +1,23 @@
 from ..core.potential import Potential
+from typing import Tuple, Optional
 import torch
 
 class GeneralCoupledPotential(Potential):
-    def __init__(self, spatial_dimensions, has_c=True, has_mix=True, compile_mode=True):
+    """A generalized coupled potential including quartic, quadratic, linear, and interaction terms.
+
+    The potential is given by:
+    V(x) = sum(a_i * x_i^4 - b_i * x_i^2 + c_i * x_i) + sum(mix_ij * x_i * x_j)
+    """
+
+    def __init__(self, spatial_dimensions: int, has_c: bool = True, has_mix: bool = True, compile_mode: bool = True) -> None:
+        """Initializes the GeneralCoupledPotential.
+
+        Args:
+            spatial_dimensions: Number of spatial dimensions.
+            has_c: Whether to include linear terms (c_i * x_i).
+            has_mix: Whether to include interaction terms (mix_ij * x_i * x_j).
+            compile_mode: Whether to compile gradient functions.
+        """
         super().__init__(compile_mode)
         self.spatial_dim = spatial_dimensions
         self.has_c = has_c
@@ -12,7 +27,16 @@ class GeneralCoupledPotential(Potential):
 
         self.triu_indices = torch.triu_indices(row=spatial_dimensions, col=spatial_dimensions, offset=1)
 
-    def potential_value(self, space_grid, coeff_grid):
+    def potential_value(self, space_grid: torch.Tensor, coeff_grid: torch.Tensor) -> torch.Tensor:
+        """Computes the coupled potential value.
+
+        Args:
+            space_grid: Spatial coordinates. Shape: (Batch, N) or (N,).
+            coeff_grid: Coefficients vector. Layout: [N Quartics, N Quadratics, N Linears (optional), K Interactions (optional)].
+
+        Returns:
+            Potential value. Shape: (Batch,) or scalar.
+        """
         # space_grid: (Batch, N) or (N,)
         # coeff_grid: (Total_Coeffs)
         is_unbatched = space_grid.ndim == 1
