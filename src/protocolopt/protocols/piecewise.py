@@ -1,8 +1,8 @@
-from ..core.model import PotentialModel
+from ..core.protocol import Protocol
 import torch
 import torch.nn.functional as F
 
-class LinearPiecewise(PotentialModel):
+class LinearPiecewise(Protocol):
     def __init__(self, coefficient_count, time_steps, knot_count, initial_coeff_guess, endpoints = None) -> None:
         if endpoints is not None:
             fixed_starting = True

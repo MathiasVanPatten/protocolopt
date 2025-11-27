@@ -27,8 +27,8 @@ class LaplaceApproximation(InitialConditionGenerator):
 
         self.noise_sigma = torch.sqrt(torch.tensor(2 * self.gamma / self.beta))
 
-    def _solve_landscape(self, potential, potential_model):
-        coeff_at_t0 = potential_model.get_coeff_grid()[:, 0]
+    def _solve_landscape(self, potential, protocol):
+        coeff_at_t0 = protocol.get_coeff_grid()[:, 0]
         def potential_kernel(x):
             return potential.potential_value(x, coeff_at_t0)
 
@@ -73,10 +73,10 @@ class LaplaceApproximation(InitialConditionGenerator):
             samples = dist.MultivariateNormal(center_locs, precision_matrix = chosen_H).sample()
             return samples
 
-    def generate_initial_conditions(self, potential, potential_model, loss):
+    def generate_initial_conditions(self, potential, protocol, loss):
         if not hasattr(self, 'log_weights'):
             print("Solving landscape for Laplace approximation...")
-            self._solve_landscape(potential, potential_model)
+            self._solve_landscape(potential, protocol)
             print("Landscape solved")
 
         initial_pos = self._get_initial_positions()

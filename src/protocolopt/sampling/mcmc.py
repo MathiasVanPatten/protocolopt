@@ -52,7 +52,7 @@ class McmcNuts(InitialConditionGenerator):
         samples = torch.randn(self.mcmc_num_samples, self.spatial_dimensions, self.time_steps, device=self.device) * self.noise_sigma * math.sqrt(self.dt)
         return samples
 
-    def _run_multichain_mcmc(self, potential, potential_model, loss):
+    def _run_multichain_mcmc(self, potential, protocol, loss):
         """Run MCMC sampling, either per-well or global depending on parameters"""
 
         max_attempts = 5
@@ -72,7 +72,7 @@ class McmcNuts(InitialConditionGenerator):
                     # Run chains
                     for chain_id in range(self.mcmc_chains_per_well):
                         sampler = MCMC(
-                            NUTS(lambda: self._posterior_for_mcmc(bounds[:, 0], bounds[:, 1], potential, potential_model)),
+                            NUTS(lambda: self._posterior_for_mcmc(bounds[:, 0], bounds[:, 1], potential, protocol)),
                             num_samples=samples_per_chain,
                             warmup_steps=int(self.mcmc_warmup_ratio * samples_per_chain)
                         )
@@ -131,7 +131,7 @@ class McmcNuts(InitialConditionGenerator):
 
                 for chain_id in range(num_chains):
                     sampler = MCMC(
-                        NUTS(lambda: self._posterior_for_mcmc(bounds_low, bounds_high, potential, potential_model)),
+                        NUTS(lambda: self._posterior_for_mcmc(bounds_low, bounds_high, potential, protocol)),
                         num_samples=samples_per_chain,
                         warmup_steps=int(self.mcmc_warmup_ratio * samples_per_chain)
                     )
@@ -174,15 +174,15 @@ class McmcNuts(InitialConditionGenerator):
             self.starting_pos = torch.cat(all_samples, dim=0)
         return self.starting_pos
 
-    def _log_prob(self, state_vectors, potential, potential_model):
+    def _log_prob(self, state_vectors, potential, protocol):
         #exp(-beta * U), boltzman distribution assumed for posterior
-        coeff_at_t0 = potential_model.get_coeff_grid()[:, 0]
+        coeff_at_t0 = protocol.get_coeff_grid()[:, 0]
         return -self.beta * potential.potential_value(state_vectors, coeff_at_t0)
 
-    def _posterior_for_mcmc(self, bounds_low, bounds_high, potential, potential_model):
+    def _posterior_for_mcmc(self, bounds_low, bounds_high, potential, protocol):
         #makes it look like pyro need it to look
         x = pyro.sample("x", pyro.distributions.Uniform(bounds_low, bounds_high).to_event(1))
-        pyro.factor("logp", self._log_prob(x.unsqueeze(-1), potential, potential_model))
+        pyro.factor("logp", self._log_prob(x.unsqueeze(-1), potential, protocol))
 
     def _partition_bounds_by_midpoints(self, loss):
         """Partition the sampling bounds using midpoints to create per-well regions"""
@@ -205,11 +205,11 @@ class McmcNuts(InitialConditionGenerator):
             well_bounds.append(well_bound)
         return well_bounds
 
-    def generate_initial_conditions(self, potential, potential_model, loss):
+    def generate_initial_conditions(self, potential, protocol, loss):
         if self.run_every_epoch:
             initial_pos = self.starting_pos
         else:
-            initial_pos = self._run_multichain_mcmc(potential, potential_model, loss)
+            initial_pos = self._run_multichain_mcmc(potential, protocol, loss)
         initial_vel = self._get_initial_velocities()
         noise = self._get_noise()
         return initial_pos, initial_vel, noise

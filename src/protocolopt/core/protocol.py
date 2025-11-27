@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 from abc import ABC, abstractmethod
 
-class PotentialModel(ABC):
+class Protocol(ABC):
     #potential models use any kind of differentiable math to go from a set
     #of trainable parameters to a full tensor of values to be used in the potential
 

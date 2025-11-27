@@ -82,7 +82,7 @@ class ConditionalFlow(McmcNuts, nn.Module):
         # runs the parent class in global mode on this subset, basically redoing the per well logic but packed in a way the flow model needs to learn from
         self.samples_per_well = None
 
-    def _train_flow(self, potential, potential_model, loss):
+    def _train_flow(self, potential, protocol, loss):
         print(f"Generating training data for {self.flow_training_well_count} random wells using inherited NUTS...")
 
         # save the original number of samples and bounds
@@ -116,7 +116,7 @@ class ConditionalFlow(McmcNuts, nn.Module):
                 self.set_bounds_from_bits(target_bits, loss)
 
                 # call the parent method that computes the initial positions using mcmc nuts
-                samples = self._run_multichain_mcmc(potential, potential_model, loss)
+                samples = self._run_multichain_mcmc(potential, protocol, loss)
 
                 all_samples.append(samples)
                 all_contexts.append(target_bits.unsqueeze(0).repeat(samples.shape[0], 1))
@@ -176,9 +176,9 @@ class ConditionalFlow(McmcNuts, nn.Module):
             self.mcmc_starting_spatial_bounds = original_bounds_backup
             self.mcmc_num_samples = original_mcmc_num_samples
 
-    def generate_initial_conditions(self, potential, potential_model, loss):
+    def generate_initial_conditions(self, potential, protocol, loss):
         if not self.is_trained:
-             self._train_flow(potential, potential_model, loss)
+             self._train_flow(potential, protocol, loss)
 
         if self.samples_per_well is not None and not self.force_random: # per well mode, makes sure to sample from each well a known number of times
 
@@ -205,7 +205,7 @@ class ConditionalFlow(McmcNuts, nn.Module):
             conditioned_flow = self.flow_dist.condition(context)
             x_standardized = conditioned_flow.sample(torch.Size([batch_size]))
             initial_pos = x_standardized * self.data_std + self.data_mean # unstandardize
-            # log_p_target = self._log_prob(initial_pos.unsqueeze(-1), potential, potential_model) # target log probability
+            # log_p_target = self._log_prob(initial_pos.unsqueeze(-1), potential, protocol) # target log probability
 
             # log_jacobian = torch.log(self.data_std).sum()
             # log_q_flow = conditioned_flow.log_prob(x_standardized) - log_jacobian

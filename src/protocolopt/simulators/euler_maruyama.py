@@ -7,8 +7,9 @@ import sys
 import os
 
 from ..utils import robust_compile
+from ..core.simulator import Simulator
 
-class EulerMaruyama:
+class EulerMaruyama(Simulator):
     def __init__(self, mode, gamma, mass = 1, dt = None, compile_mode=True) -> None:
         if mode not in ['underdamped', 'overdamped']:
             raise ValueError(f"Invalid mode: {mode}, choose from 'underdamped' or 'overdamped'")
@@ -102,12 +103,11 @@ class EulerMaruyama:
         if DEBUG_PRINT:
             print(f"Malliavin weight stats - mean: {self._compute_malliavian_weight(dv_dxda_tensor, noise, noise_sigma).mean().item()}, std: {self._compute_malliavian_weight(dv_dxda_tensor, noise, noise_sigma, dt).std().item()}")
             print(f"dv_dxda_tensor stats - mean: {dv_dxda_tensor.mean().item()}, std: {dv_dxda_tensor.std().item()}, has nan: {torch.isnan(dv_dxda_tensor).any()}")
-        output_dict = {
-            'trajectories': torch.cat([traj_pos.unsqueeze(-1), traj_vel.unsqueeze(-1)], dim=-1),
-            'potential': potential_tensor,
-            'malliavian_weight': self._compute_malliavian_weight(dv_dxda_tensor, noise, noise_sigma)
-        }
-        return output_dict
+
+        trajectories = torch.cat([traj_pos.unsqueeze(-1), traj_vel.unsqueeze(-1)], dim=-1)
+        malliavian_weight = self._compute_malliavian_weight(dv_dxda_tensor, noise, noise_sigma)
+
+        return trajectories, potential_tensor, malliavian_weight
 
     def debug_gradients(self, dv_dx, U, traj_pos_slice, traj_vel_slice, potential_tensor, dv_dxda_tensor):
         pass

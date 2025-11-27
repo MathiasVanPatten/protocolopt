@@ -1,8 +1,8 @@
 import torch
 import math
 from protocolopt.potentials import GeneralCoupledPotential
-from protocolopt.models import LinearPiecewise
-from protocolopt.core.engine import EulerMaruyama
+from protocolopt.protocols import LinearPiecewise
+from protocolopt.simulators import EulerMaruyama
 from protocolopt.losses import StandardLoss
 from protocolopt.core.simulation import Simulation
 from protocolopt.sampling import LaplaceApproximation
@@ -87,8 +87,8 @@ initial_coeff_guess = torch.stack(guess_list)
 
 initial_coeff_guess += 0.01 * torch.randn_like(initial_coeff_guess)
 
-# Instantiate PotentialModel (LinearPiecewise)
-potential_model = LinearPiecewise(
+# Instantiate Protocol (LinearPiecewise)
+protocol = LinearPiecewise(
     coefficient_count=endpoints.shape[0],
     time_steps=time_steps,
     knot_count=num_coefficients+2,
@@ -99,8 +99,8 @@ potential_model = LinearPiecewise(
 # Instantiate Potential (GeneralCoupledPotential)
 potential = GeneralCoupledPotential(spatial_dimensions=spatial_dimensions, has_c=True, compile_mode=True)
 
-# Instantiate SimEngine (EulerMaruyama)
-sim_engine = EulerMaruyama(
+# Instantiate Simulator (EulerMaruyama)
+simulator = EulerMaruyama(
     mode='overdamped',
     gamma=gamma,
     mass=1.0,
@@ -187,9 +187,9 @@ init_cond_generator = LaplaceApproximation(
 # Instantiate Simulation
 simulation = Simulation(
     potential=potential,
-    sim_engine=sim_engine,
+    simulator=simulator,
     loss=loss,
-    potential_model=potential_model,
+    protocol=protocol,
     initial_condition_generator=init_cond_generator,
     params=params,
     callbacks=callbacks
