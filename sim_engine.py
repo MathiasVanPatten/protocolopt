@@ -5,11 +5,8 @@
 import torch
 import sys
 import os
-try:
-    from protocolopt.utils import robust_compile
-except ImportError:
-    # Fallback for when running script directly vs as module
-    from utils import robust_compile
+
+from utils import robust_compile
 
 class EulerMaruyama:
     def __init__(self, mode, gamma, mass = 1, dt = None, compile_mode=True) -> None:

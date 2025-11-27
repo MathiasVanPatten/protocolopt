@@ -4,11 +4,7 @@ import torch
 import sys
 from torch.func import vmap, grad, jacrev
 from abc import ABC, abstractmethod
-try:
-    from protocolopt.utils import robust_compile
-except ImportError:
-    # Fallback for when running script directly vs as module
-    from utils import robust_compile
+from utils import robust_compile
 
 class Potential(ABC):
     def __init__(self, compile_mode=True):
