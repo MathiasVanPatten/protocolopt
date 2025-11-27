@@ -56,7 +56,7 @@ endpoints = torch.tensor(endpoints_list, device=device)
 
 # Training parameters
 samples_per_well = 2000 
-training_iterations = 1
+training_iterations = 400
 learning_rate = 0.25
 alpha = 2.0  # endpoint_weight
 alpha_1 = 0.1  # var_weight

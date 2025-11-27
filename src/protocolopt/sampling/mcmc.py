@@ -30,7 +30,8 @@ class McmcNuts(InitialConditionGenerator):
         self.noise_sigma = torch.sqrt(torch.tensor(2 * self.gamma / self.beta))
         self.mass = params['mass']
         self.starting_pos = None
-        if params.get('run_every_epoch', False):
+        self.run_every_epoch = params.get('run_every_epoch', False)
+        if self.run_every_epoch:
             print("Warning: Running MCMC every epoch will be very slow and is not recommended for training. Please use the ConditionalFlowBoltzmannGenerator instead if your potential doesn't change at t0.")
 
     def _get_initial_velocities(self):
