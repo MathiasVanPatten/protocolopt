@@ -11,7 +11,7 @@ from .protocol import Protocol
 from .sampling import InitialConditionGenerator
 from .callback import Callback
 
-class Simulation:
+class ProtocolOptimizer:
     """The main orchestrator for running simulations and training protocols."""
 
     def __init__(
@@ -24,7 +24,7 @@ class Simulation:
         params: Union[SimulationConfig, Dict[str, Any]],
         callbacks: List[Callback] = []
     ) -> None:
-        """Initializes the Simulation.
+        """Initializes the ProtocolOptimizer.
 
         Args:
             potential: The potential energy landscape.
@@ -82,7 +82,7 @@ class Simulation:
             debug_print: Whether to print debug info from simulator.
 
         Returns:
-            A tuple of (trajectories, potential_val, malliavian_weight, protocol_tensor).
+            A tuple of (microstate_paths, potential_val, malliavian_weight, protocol_tensor).
         """
         initial_pos, initial_vel, noise = self.init_cond_generator.generate_initial_conditions(self.potential, self.protocol, self.loss)
 
@@ -95,7 +95,7 @@ class Simulation:
 
         protocol_tensor = self.protocol.get_protocol_tensor()
 
-        trajectories, potential_val, malliavian_weight = self.simulator.make_trajectories(
+        microstate_paths, potential_val, malliavian_weight = self.simulator.make_microstate_paths(
             self.potential,
             initial_pos,
             initial_vel,
@@ -106,7 +106,7 @@ class Simulation:
             debug_print = debug_print
         )
 
-        return trajectories, potential_val, malliavian_weight, protocol_tensor
+        return microstate_paths, potential_val, malliavian_weight, protocol_tensor
 
     def _setup_optimizer(self, optimizer_class = torch.optim.Adam):
         self.optimizer = optimizer_class(self.protocol.trainable_params(), lr=self.learning_rate)
@@ -126,10 +126,10 @@ class Simulation:
 
                 self.optimizer.zero_grad()
 
-                trajectories, potential_val, malliavian_weight, protocol_tensor = self.simulate()
+                microstate_paths, potential_val, malliavian_weight, protocol_tensor = self.simulate()
 
                 total_loss, per_traj_loss = self.loss.compute_FRR_gradient( self.potential,
-                    potential_val, trajectories, malliavian_weight,
+                    potential_val, microstate_paths, malliavian_weight,
                     protocol_tensor, self.dt
                 )
 
@@ -143,7 +143,7 @@ class Simulation:
                 pbar.set_postfix({'loss': total_loss.item()})
 
                 sim_dict_detached = {
-                    'trajectories': trajectories.detach(),
+                    'microstate_paths': microstate_paths.detach(),
                     'potential': potential_val.detach(),
                     'malliavian_weight': malliavian_weight.detach(),
                     'protocol_tensor': protocol_tensor.detach()
@@ -154,7 +154,7 @@ class Simulation:
 
         # Reconstruct sim_dict for train_end callback
         sim_dict = {
-            'trajectories': trajectories,
+            'microstate_paths': microstate_paths,
             'potential': potential_val,
             'malliavian_weight': malliavian_weight
         }

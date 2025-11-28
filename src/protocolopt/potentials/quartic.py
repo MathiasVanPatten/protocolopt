@@ -1,18 +1,18 @@
 from ..core.potential import Potential
-from ..core.types import StateSpace, Coefficients
+from ..core.types import StateSpace, ControlVector
 from typing import Tuple, Optional
 import torch
 
 class QuarticPotential(Potential):
     """Potential of form V(x, t) = a(t)x^4 - b(t)x^2."""
 
-    def potential_value(self, space_grid: StateSpace, protocol_tensor: Coefficients) -> torch.Tensor:
+    def potential_value(self, space_grid: StateSpace, protocol_tensor: ControlVector) -> torch.Tensor:
         """Computes the quartic potential value.
 
         Args:
             space_grid: Spatial coordinates.
                         Shape: (Batch, Spatial_Dim) or (Spatial_Dim,)
-            protocol_tensor: Coefficients [a, b].
+            protocol_tensor: Control vector [a, b].
                              Shape: (Control_Dim,)
 
         Returns:
@@ -23,13 +23,13 @@ class QuarticPotential(Potential):
 class QuarticPotentialWithLinearTerm(Potential):
     """Potential of form V(x, t) = a(t)x^4 - b(t)x^2 + c(t)x."""
 
-    def potential_value(self, space_grid: StateSpace, protocol_tensor: Coefficients) -> torch.Tensor:
+    def potential_value(self, space_grid: StateSpace, protocol_tensor: ControlVector) -> torch.Tensor:
         """Computes the quartic potential with linear term.
 
         Args:
             space_grid: Spatial coordinates.
                         Shape: (Batch, Spatial_Dim) or (Spatial_Dim,)
-            protocol_tensor: Coefficients [a, b, c].
+            protocol_tensor: Control vector [a, b, c].
                              Shape: (Control_Dim,)
 
         Returns:

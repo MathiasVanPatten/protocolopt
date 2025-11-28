@@ -2,7 +2,7 @@ import torch
 from abc import ABC, abstractmethod
 from typing import Tuple, Dict, Any, TYPE_CHECKING
 from torch.func import vmap
-from .types import PotentialTensor, Trajectories, ControlSignal, MalliavinWeight
+from .types import PotentialTensor, MicrostatePaths, ControlSignal, MalliavinWeight
 
 if TYPE_CHECKING:
     from .potential import Potential
@@ -16,20 +16,21 @@ class Loss(ABC):
     """Abstract base class for loss functions."""
 
     @abstractmethod
-    def loss(self, potential_tensor: PotentialTensor, trajectory_tensor: Trajectories, protocol_tensor: ControlSignal, dt: float) -> torch.Tensor:
-        """Computes the loss for a batch of trajectories.
+    def loss(self, potential_tensor: PotentialTensor, microstate_paths: MicrostatePaths, protocol_tensor: ControlSignal, dt: float) -> torch.Tensor:
+        """Computes the loss for a batch of microstate paths.
 
         Args:
-            potential_tensor: Potential values along trajectories.
+            potential_tensor: Potential values along paths.
                               Shape: (Batch, Time_Steps) or (Batch, Time_Steps+1)
-            trajectory_tensor: Trajectory data.
-                               Shape: (Batch, Spatial_Dim, Time_Steps+1, 2)
+            microstate_paths: Microstate path data.
+                              Shape: (Batch, Spatial_Dim, Time_Steps+1, 2)
+                              Dimension 3 is (position, velocity).
             protocol_tensor: Control signals from the protocol.
                              Shape: (Control_Dim, Time_Steps)
             dt: Time step size.
 
         Returns:
-            The loss value for each trajectory. Shape: (Batch,).
+            The loss value for each path. Shape: (Batch,).
         """
         pass
 
@@ -45,7 +46,7 @@ class Loss(ABC):
         self,
         potential_obj: "Potential",
         potential_tensor: PotentialTensor,
-        trajectory_tensor: Trajectories,
+        microstate_paths: MicrostatePaths,
         malliavian_weights: MalliavinWeight,
         protocol_tensor: ControlSignal,
         dt: float
@@ -55,15 +56,15 @@ class Loss(ABC):
         Args:
             potential_obj: The potential object.
             potential_tensor: Recorded potential values.
-            trajectory_tensor: Recorded trajectories.
+            microstate_paths: Recorded microstate paths.
             malliavian_weights: Computed Malliavin weights for gradient estimation.
             protocol_tensor: The current control signals from the protocol.
             dt: Time step.
 
         Returns:
-            A tuple (total_loss, per_trajectory_loss).
+            A tuple (total_loss, per_path_loss).
         """
-        pos_tensor_detached = trajectory_tensor[..., 0].detach()
+        pos_tensor_detached = microstate_paths[..., 0].detach()
         # recompute to freeze the secondary reliance on the protocol through the trajectories
         # we want dLoss/da where loss is given a trajectory and the mall weights carry the probability of the trajectory
         def potential_at_t(pos_t, coeff_t):
@@ -77,7 +78,7 @@ class Loss(ABC):
 
         loss_values_direct = self.loss(
             clean_potential_tensor,
-            trajectory_tensor.detach(), # detach to avoid double counting through the stochastic correction loss
+            microstate_paths.detach(), # detach to avoid double counting through the stochastic correction loss
             protocol_tensor,
             dt
         )
@@ -88,7 +89,7 @@ class Loss(ABC):
         with torch.no_grad():
             loss_values_for_scoring = self.loss(
                 potential_tensor,
-                trajectory_tensor,
+                microstate_paths,
                 protocol_tensor,
                 dt
             )

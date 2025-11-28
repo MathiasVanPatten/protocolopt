@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 import torch
 from typing import Tuple, TYPE_CHECKING
-from .types import StateSpace, Trajectories
+from .types import StateSpace, MicrostatePaths
 
 if TYPE_CHECKING:
     from .potential import Potential
@@ -25,8 +25,8 @@ class InitialConditionGenerator(ABC):
 
         Returns:
             Tuple containing:
-            - **initial_pos**: Starting positions. Shape: (Batch, Spatial_Dim)
-            - **initial_vel**: Starting velocities. Shape: (Batch, Spatial_Dim)
-            - **noise**: Brownian noise. Shape: (Batch, Spatial_Dim, Time_Steps)
+            - **initial_pos**: Starting positions (sampled or given). Shape: (Batch, Spatial_Dim)
+            - **initial_vel**: Starting velocities (sampled or given). Shape: (Batch, Spatial_Dim)
+            - **noise**: Noise tensor (sampled or given). Shape: (Batch, Spatial_Dim, Time_Steps)
         """
         pass

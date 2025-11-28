@@ -4,7 +4,7 @@ import sys
 from torch.func import vmap, grad, jacrev
 from abc import ABC, abstractmethod
 from ..utils import robust_compile
-from .types import StateSpace, Coefficients, ControlSignal
+from .types import StateSpace, ControlVector, ControlSignal
 
 class Potential(ABC):
     """Abstract base class for potential energy landscapes."""
@@ -18,13 +18,13 @@ class Potential(ABC):
         self.compile_mode = compile_mode
 
     @abstractmethod
-    def potential_value(self, space_grid: StateSpace, protocol_tensor: Coefficients) -> torch.Tensor:
+    def potential_value(self, space_grid: StateSpace, protocol_tensor: ControlVector) -> torch.Tensor:
         """Computes the potential energy value.
 
         Args:
             space_grid: The spatial coordinates.
                         Shape: (Batch, Spatial_Dim) or (Spatial_Dim,)
-            protocol_tensor: The coefficients for the potential.
+            protocol_tensor: The control vector for the potential.
                              Shape: (Control_Dim,)
 
         Returns:

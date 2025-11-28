@@ -1,5 +1,5 @@
 from ..core.loss import Loss, TruthTableError
-from ..core.types import PotentialTensor, Trajectories, ControlSignal
+from ..core.types import PotentialTensor, MicrostatePaths, ControlSignal
 from .functional import variance_loss, work_loss, temporal_smoothness_penalty
 from typing import Dict, Optional, Union, List, Any
 import torch
@@ -22,6 +22,7 @@ class LogicGateEndpointLossBase(Loss):
                 the location of 0b0, index 1 is the location of 0b1, etc. To the left of the midpoint
                 is 0 and the right is 1. Exactly on the midpoint maps to 0.
                 Shape: (Domain_Size, Spatial_Dim)
+                Domain_Size is 2^Spatial_Dim.
             exponent: Exponent for the distance metric (p-norm).
             starting_bit_weights: Optional tensor of weights for each starting state (int representation).
                 Shape should match domain size.
@@ -71,19 +72,19 @@ class LogicGateEndpointLossBase(Loss):
         else:
             return 1 + self._get_depth_of_truth_table(truth_table_dict[0])
 
-    def _compute_starting_bits_int(self, trajectory_tensor: Trajectories) -> torch.Tensor:
-        starting_bits = trajectory_tensor[:,:,0,0] > self.midpoints[None,:]
-        starting_bits_int = torch.sum(starting_bits.int() * torch.tensor(list(reversed([2**x for x in range(self.midpoints.shape[0])])), device = trajectory_tensor.device)[None, :], axis = -1)
+    def _compute_starting_bits_int(self, microstate_paths: MicrostatePaths) -> torch.Tensor:
+        starting_bits = microstate_paths[:,:,0,0] > self.midpoints[None,:]
+        starting_bits_int = torch.sum(starting_bits.int() * torch.tensor(list(reversed([2**x for x in range(self.midpoints.shape[0])])), device = microstate_paths.device)[None, :], axis = -1)
         return starting_bits_int
     
-    def _compute_ending_bits_int(self, trajectory_tensor: Trajectories) -> torch.Tensor:
-        ending_bits = trajectory_tensor[:,:,-1,0] > self.midpoints[None,:]
-        ending_bits_int = torch.sum(ending_bits.int() * torch.tensor(list(reversed([2**x for x in range(self.midpoints.shape[0])])), device = trajectory_tensor.device)[None, :], axis = -1)
+    def _compute_ending_bits_int(self, microstate_paths: MicrostatePaths) -> torch.Tensor:
+        ending_bits = microstate_paths[:,:,-1,0] > self.midpoints[None,:]
+        ending_bits_int = torch.sum(ending_bits.int() * torch.tensor(list(reversed([2**x for x in range(self.midpoints.shape[0])])), device = microstate_paths.device)[None, :], axis = -1)
         return ending_bits_int
 
-    def _endpoint_loss(self, trajectory_tensor: Trajectories) -> torch.Tensor:
-        starting_bits_int = self._compute_starting_bits_int(trajectory_tensor)
-        ending_positions = trajectory_tensor[:,:,-1,0]
+    def _endpoint_loss(self, microstate_paths: MicrostatePaths) -> torch.Tensor:
+        starting_bits_int = self._compute_starting_bits_int(microstate_paths)
+        ending_positions = microstate_paths[:,:,-1,0]
         distances = torch.norm(ending_positions[:,None,:] - self.bit_locations[None,:,:], dim = -1, p = self.exponent)
         valid_mask = self.validity[starting_bits_int, :]
         masked_distances = torch.where(valid_mask, distances, torch.inf)
@@ -104,35 +105,35 @@ class LogicGateEndpointLossBase(Loss):
         for inputstate, outputstate in self.flattened_truth_table.items():
             self.validity[inputstate, outputstate] = True
     
-    def compute_binary_trajectory_info(self, trajectory_tensor: Trajectories) -> Dict[str, torch.Tensor]:
+    def compute_binary_trajectory_info(self, microstate_paths: MicrostatePaths) -> Dict[str, torch.Tensor]:
         """
-        Compute starting and ending binary states for trajectories.
+        Compute starting and ending binary states for microstate paths.
         
         Args:
-            trajectory_tensor: Trajectory tensor.
-                               Shape: (Batch, Spatial_Dim, Time_Steps+1, 2)
+            microstate_paths: Microstate paths tensor.
+                              Shape: (Batch, Spatial_Dim, Time_Steps+1, 2)
         
         Returns:
             Dictionary with 'starting_bits_int' and 'ending_bits_int' tensors
         """
         return {
-            'starting_bits_int': self._compute_starting_bits_int(trajectory_tensor),
-            'ending_bits_int': self._compute_ending_bits_int(trajectory_tensor)
+            'starting_bits_int': self._compute_starting_bits_int(microstate_paths),
+            'ending_bits_int': self._compute_ending_bits_int(microstate_paths)
         }
     
-    def compute_binary_error_rate(self, trajectory_tensor: Trajectories) -> float:
+    def compute_binary_error_rate(self, microstate_paths: MicrostatePaths) -> float:
         """
-        Compute the percentage of trajectories ending in invalid states.
+        Compute the percentage of microstate paths ending in invalid states.
         
         Args:
-            trajectory_tensor: Trajectory tensor (should be detached)
-                               Shape: (Batch, Spatial_Dim, Time_Steps+1, 2)
+            microstate_paths: Microstate paths tensor (should be detached)
+                              Shape: (Batch, Spatial_Dim, Time_Steps+1, 2)
             
         Returns:
             Float representing the error rate (0.0 to 1.0)
         """
-        starting_bits_int = self._compute_starting_bits_int(trajectory_tensor)
-        ending_bits_int = self._compute_ending_bits_int(trajectory_tensor)
+        starting_bits_int = self._compute_starting_bits_int(microstate_paths)
+        ending_bits_int = self._compute_ending_bits_int(microstate_paths)
         valid_transitions = self.validity[starting_bits_int, ending_bits_int]
         error_rate = (~valid_transitions).float().mean()
         return error_rate.item()
@@ -185,22 +186,22 @@ class StandardLogicGateLoss(LogicGateEndpointLossBase):
         self.var_weight = var_weight
         self.smoothness_weight = smoothness_weight
 
-    def loss(self, potential_tensor: PotentialTensor, trajectory_tensor: Trajectories, protocol_tensor: ControlSignal, dt: float) -> torch.Tensor:
+    def loss(self, potential_tensor: PotentialTensor, microstate_paths: MicrostatePaths, protocol_tensor: ControlSignal, dt: float) -> torch.Tensor:
         """Computes the combined loss.
 
         Args:
             potential_tensor: Potential energy values. Shape: (Batch, Time_Steps)
-            trajectory_tensor: Trajectory data. Shape: (Batch, Spatial_Dim, Time_Steps+1, 2)
+            microstate_paths: Microstate paths data. Shape: (Batch, Spatial_Dim, Time_Steps+1, 2)
             protocol_tensor: Control signals. Shape: (Control_Dim, Time_Steps)
             dt: Time step size.
 
         Returns:
             Loss value. Shape: (Batch,)
         """
-        starting_bits_int = self._compute_starting_bits_int(trajectory_tensor)
-        endpoint_loss = self._endpoint_loss(trajectory_tensor)
+        starting_bits_int = self._compute_starting_bits_int(microstate_paths)
+        endpoint_loss = self._endpoint_loss(microstate_paths)
         work_loss_value = work_loss(potential_tensor)
-        var_loss_value = variance_loss(trajectory_tensor, starting_bits_int, self.domain)
+        var_loss_value = variance_loss(microstate_paths, starting_bits_int, self.domain)
         smoothness_loss_value = temporal_smoothness_penalty(protocol_tensor, dt)
         return (
             self.endpoint_weight * endpoint_loss
@@ -209,23 +210,23 @@ class StandardLogicGateLoss(LogicGateEndpointLossBase):
             + self.smoothness_weight * smoothness_loss_value
         )
     
-    def compute_loss_components(self, potential_tensor: PotentialTensor, trajectory_tensor: Trajectories, protocol_tensor: ControlSignal, dt: float) -> Dict[str, torch.Tensor]:
+    def compute_loss_components(self, potential_tensor: PotentialTensor, microstate_paths: MicrostatePaths, protocol_tensor: ControlSignal, dt: float) -> Dict[str, torch.Tensor]:
         """
         Compute individual loss components for logging/analysis.
         
         Args:
             potential_tensor: Detached potential tensor
-            trajectory_tensor: Detached trajectory tensor
+            microstate_paths: Detached microstate paths tensor
             protocol_tensor: Protocol tensor
             dt: Time step
             
         Returns:
             Dictionary with loss component values (already detached from input)
         """
-        starting_bits_int = self._compute_starting_bits_int(trajectory_tensor)
-        endpoint_loss_val = self._endpoint_loss(trajectory_tensor)
+        starting_bits_int = self._compute_starting_bits_int(microstate_paths)
+        endpoint_loss_val = self._endpoint_loss(microstate_paths)
         work_loss_val = work_loss(potential_tensor)
-        var_loss_val = variance_loss(trajectory_tensor, starting_bits_int, self.domain)
+        var_loss_val = variance_loss(microstate_paths, starting_bits_int, self.domain)
         smoothness_loss_val = temporal_smoothness_penalty(protocol_tensor, dt)
         
         return {

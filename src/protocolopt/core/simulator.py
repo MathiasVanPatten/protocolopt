@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Tuple, TYPE_CHECKING
 import torch
-from .types import Trajectories, PotentialTensor, MalliavinWeight, StateSpace, ControlSignal
+from .types import MicrostatePaths, PotentialTensor, MalliavinWeight, StateSpace, ControlSignal
 
 if TYPE_CHECKING:
     from .potential import Potential
@@ -10,7 +10,7 @@ class Simulator(ABC):
     """Abstract base class for simulation engines."""
 
     @abstractmethod
-    def make_trajectories(
+    def make_microstate_paths(
         self,
         potential: "Potential",
         initial_pos: StateSpace,
@@ -20,8 +20,8 @@ class Simulator(ABC):
         noise_sigma: float,
         protocol_tensor: ControlSignal,
         debug_print: bool = False
-    ) -> Tuple[Trajectories, PotentialTensor, MalliavinWeight]:
-        """Generates trajectories based on the system dynamics.
+    ) -> Tuple[MicrostatePaths, PotentialTensor, MalliavinWeight]:
+        """Generates microstate paths based on the system dynamics.
 
         Args:
             potential: The potential energy landscape object.
@@ -30,17 +30,18 @@ class Simulator(ABC):
             initial_vel: Starting velocities.
                          Shape: (Batch, Spatial_Dim)
             time_steps: Number of integration steps to perform.
-            noise: Brownian noise tensor.
+            noise: Noise tensor (sampled or given).
                    Shape: (Batch, Spatial_Dim, Time_Steps)
             noise_sigma: Standard deviation of the noise.
-            protocol_tensor: Time-dependent coefficients for the potential.
+            protocol_tensor: Time-dependent control signals for the potential.
                              Shape: (Control_Dim, Time_Steps)
             debug_print: If True, prints statistics about gradients during execution.
 
         Returns:
             A tuple containing:
-            - **trajectories**: Full path of particles.
-                                Shape: (Batch, Spatial_Dim, Time_Steps+1, 2)
+            - **microstate_paths**: Full path of particles.
+                                    Shape: (Batch, Spatial_Dim, Time_Steps+1, 2)
+                                    Dimension 3 is (position, velocity).
             - **potential_val**: Potential energy at each step.
                                  Shape: (Batch, Time_Steps)
             - **malliavian_weight**: Computed path weights.
