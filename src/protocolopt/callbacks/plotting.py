@@ -6,6 +6,11 @@ from PIL import Image
 import io
 import numpy as np
 from matplotlib.colors import ListedColormap
+from typing import Optional, Dict, Any, TYPE_CHECKING
+from ..core.types import Trajectories, ControlSignal, PotentialTensor
+
+if TYPE_CHECKING:
+    from ..core.simulation import Simulation
 
 try:
     from .aim import AimCallback
@@ -20,7 +25,7 @@ plt.ioff()
 class TrajectoryPlotCallback(Callback):
     """Callback for plotting trajectory positions over time"""
     
-    def __init__(self, save_dir='figs', plot_frequency=None, num_trajectories=100):
+    def __init__(self, save_dir: str = 'figs', plot_frequency: Optional[int] = None, num_trajectories: int = 100):
         """
         Args:
             save_dir: Directory to save plots (relative to working directory or absolute path)
@@ -31,9 +36,9 @@ class TrajectoryPlotCallback(Callback):
         self.save_dir.mkdir(parents=True, exist_ok=True)
         self.plot_frequency = plot_frequency
         self.num_trajectories = num_trajectories
-        self.total_epochs = None
+        self.total_epochs: Optional[int] = None
     
-    def _log_or_save_figure(self, fig, name, epoch, simulation_object, dpi=150):
+    def _log_or_save_figure(self, fig: plt.Figure, name: str, epoch: int, simulation_object: "Simulation", dpi: int = 150) -> None:
         """Log figure to Aim if available, otherwise save to disk"""
         aim_callback = next((cb for cb in simulation_object.callbacks 
                             if type(cb).__name__ == 'AimCallback'), None)
@@ -50,10 +55,10 @@ class TrajectoryPlotCallback(Callback):
             filepath = self.save_dir / f'{name}_epoch_{epoch:04d}.png'
             fig.savefig(filepath, dpi=dpi)
     
-    def on_train_start(self, simulation_object):
+    def on_train_start(self, simulation_object: "Simulation") -> None:
         self.total_epochs = simulation_object.epochs
     
-    def on_epoch_end(self, simulation_object, sim_dict, loss_values, epoch):
+    def on_epoch_end(self, simulation_object: "Simulation", sim_dict: Dict[str, Any], loss_values: torch.Tensor, epoch: int) -> None:
         should_plot = False
         if self.plot_frequency is not None:
             should_plot = (epoch % self.plot_frequency == 0) or (epoch == self.total_epochs - 1)
@@ -66,7 +71,7 @@ class TrajectoryPlotCallback(Callback):
             return
         
         time_steps = simulation_object.time_steps
-        trajectories = sim_dict['trajectories']
+        trajectories: Trajectories = sim_dict['trajectories']
         spatial_dimensions = simulation_object.spatial_dimensions
         
         # Choose random trajectory indices
@@ -90,7 +95,7 @@ class TrajectoryPlotCallback(Callback):
 class ConfusionMatrixCallback(Callback):
     """Callback for plotting confusion matrix of binary state transitions"""
     
-    def __init__(self, save_dir='figs', plot_frequency=None):
+    def __init__(self, save_dir: str = 'figs', plot_frequency: Optional[int] = None):
         """
         Args:
             save_dir: Directory to save plots
@@ -99,9 +104,9 @@ class ConfusionMatrixCallback(Callback):
         self.save_dir = Path(save_dir)
         self.save_dir.mkdir(parents=True, exist_ok=True)
         self.plot_frequency = plot_frequency
-        self.total_epochs = None
+        self.total_epochs: Optional[int] = None
     
-    def _log_or_save_figure(self, fig, name, epoch, simulation_object, dpi=150):
+    def _log_or_save_figure(self, fig: plt.Figure, name: str, epoch: int, simulation_object: "Simulation", dpi: int = 150) -> None:
         """Log figure to Aim if available, otherwise save to disk"""
         aim_callback = next((cb for cb in simulation_object.callbacks 
                             if type(cb).__name__ == 'AimCallback'), None)
@@ -118,10 +123,10 @@ class ConfusionMatrixCallback(Callback):
             filepath = self.save_dir / f'{name}_epoch_{epoch:04d}.png'
             fig.savefig(filepath, dpi=dpi)
     
-    def on_train_start(self, simulation_object):
+    def on_train_start(self, simulation_object: "Simulation") -> None:
         self.total_epochs = simulation_object.epochs
     
-    def on_epoch_end(self, simulation_object, sim_dict, loss_values, epoch):
+    def on_epoch_end(self, simulation_object: "Simulation", sim_dict: Dict[str, Any], loss_values: torch.Tensor, epoch: int) -> None:
         # Determine if we should plot this epoch
         should_plot = False
         if self.plot_frequency is not None:
@@ -210,14 +215,14 @@ class ConfusionMatrixCallback(Callback):
 
 class PotentialLandscapePlotCallback(Callback):
     
-    def __init__(self, save_dir='figs', plot_frequency=None, spatial_resolution=100, trajectories_per_bit=10):
+    def __init__(self, save_dir: str = 'figs', plot_frequency: Optional[int] = None, spatial_resolution: int = 100, trajectories_per_bit: int = 10):
         self.save_dir = Path(save_dir)
         self.plot_frequency = plot_frequency
         self.spatial_resolution = spatial_resolution
         self.trajectories_per_bit = trajectories_per_bit
-        self.total_epochs = None
+        self.total_epochs: Optional[int] = None
     
-    def _log_or_save_figure(self, fig, name, epoch, simulation_object, dpi=150):
+    def _log_or_save_figure(self, fig: plt.Figure, name: str, epoch: int, simulation_object: "Simulation", dpi: int = 150) -> None:
         aim_callback = next((cb for cb in simulation_object.callbacks 
                             if type(cb).__name__ == 'AimCallback'), None)
         
@@ -234,10 +239,10 @@ class PotentialLandscapePlotCallback(Callback):
             filepath = self.save_dir / f'{name}_epoch_{epoch:04d}.png'
             fig.savefig(filepath, dpi=dpi)
     
-    def on_train_start(self, simulation_object):
+    def on_train_start(self, simulation_object: "Simulation") -> None:
         self.total_epochs = simulation_object.epochs
     
-    def on_epoch_end(self, simulation_object, sim_dict, loss_values, epoch):
+    def on_epoch_end(self, simulation_object: "Simulation", sim_dict: Dict[str, Any], loss_values: torch.Tensor, epoch: int) -> None:
         should_plot = False
         if self.plot_frequency is not None:
             should_plot = (epoch % self.plot_frequency == 0) or (epoch == self.total_epochs - 1)
@@ -249,11 +254,11 @@ class PotentialLandscapePlotCallback(Callback):
         if not should_plot:
             return
         
-        protocol_tensor = sim_dict.get('protocol_tensor', None)
+        protocol_tensor: Optional[ControlSignal] = sim_dict.get('protocol_tensor', None)
         if protocol_tensor is None:
             return
         
-        trajectories = sim_dict['trajectories']
+        trajectories: Trajectories = sim_dict['trajectories']
         spatial_dimensions = simulation_object.spatial_dimensions
         time_steps = simulation_object.time_steps
         spatial_bounds = getattr(simulation_object.init_cond_generator, 'mcmc_starting_spatial_bounds', None)
@@ -346,12 +351,12 @@ class PotentialLandscapePlotCallback(Callback):
 
 class ProtocolPlotCallback(Callback):
     
-    def __init__(self, save_dir='figs', plot_frequency=None):
+    def __init__(self, save_dir: str = 'figs', plot_frequency: Optional[int] = None):
         self.save_dir = Path(save_dir)
         self.plot_frequency = plot_frequency
-        self.total_epochs = None
+        self.total_epochs: Optional[int] = None
     
-    def _log_or_save_figure(self, fig, name, epoch, simulation_object, dpi=150):
+    def _log_or_save_figure(self, fig: plt.Figure, name: str, epoch: int, simulation_object: "Simulation", dpi: int = 150) -> None:
         aim_callback = next((cb for cb in simulation_object.callbacks 
                             if type(cb).__name__ == 'AimCallback'), None)
         
@@ -368,10 +373,10 @@ class ProtocolPlotCallback(Callback):
             filepath = self.save_dir / f'{name}_epoch_{epoch:04d}.png'
             fig.savefig(filepath, dpi=dpi)
     
-    def on_train_start(self, simulation_object):
+    def on_train_start(self, simulation_object: "Simulation") -> None:
         self.total_epochs = simulation_object.epochs
     
-    def on_epoch_end(self, simulation_object, sim_dict, loss_values, epoch):
+    def on_epoch_end(self, simulation_object: "Simulation", sim_dict: Dict[str, Any], loss_values: torch.Tensor, epoch: int) -> None:
         should_plot = False
         if self.plot_frequency is not None:
             should_plot = (epoch % self.plot_frequency == 0) or (epoch == self.total_epochs - 1)
@@ -383,7 +388,7 @@ class ProtocolPlotCallback(Callback):
         if not should_plot:
             return
         
-        protocol_tensor = sim_dict.get('protocol_tensor', None)
+        protocol_tensor: Optional[ControlSignal] = sim_dict.get('protocol_tensor', None)
         if protocol_tensor is None:
             return
         
