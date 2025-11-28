@@ -1,13 +1,14 @@
 import torch
 import matplotlib.pyplot as plt
 from pathlib import Path
-from callbacks import Callback
+from ..core.callback import Callback
 from PIL import Image
 import io
 import numpy as np
 from matplotlib.colors import ListedColormap
 
 try:
+    from .aim import AimCallback
     from aim import Image as AimImage
     AIM_AVAILABLE = True
 except ImportError:
@@ -58,7 +59,8 @@ class TrajectoryPlotCallback(Callback):
             should_plot = (epoch % self.plot_frequency == 0) or (epoch == self.total_epochs - 1)
         else:
             if self.total_epochs is not None:
-                should_plot = (epoch % (self.total_epochs // 4) == 0) or (epoch == self.total_epochs - 1)
+                div = max(1, self.total_epochs // 4)
+                should_plot = (epoch % div == 0) or (epoch == self.total_epochs - 1)
         
         if not should_plot:
             return
@@ -126,7 +128,8 @@ class ConfusionMatrixCallback(Callback):
             should_plot = (epoch % self.plot_frequency == 0) or (epoch == self.total_epochs - 1)
         else:
             if self.total_epochs is not None:
-                should_plot = (epoch % (self.total_epochs // 4) == 0) or (epoch == self.total_epochs - 1)
+                div = max(1, self.total_epochs // 4)
+                should_plot = (epoch % div == 0) or (epoch == self.total_epochs - 1)
         
         if not should_plot:
             return
@@ -240,7 +243,8 @@ class PotentialLandscapePlotCallback(Callback):
             should_plot = (epoch % self.plot_frequency == 0) or (epoch == self.total_epochs - 1)
         else:
             if self.total_epochs is not None:
-                should_plot = (epoch % (self.total_epochs // 4) == 0) or (epoch == self.total_epochs - 1)
+                div = max(1, self.total_epochs // 4)
+                should_plot = (epoch % div == 0) or (epoch == self.total_epochs - 1)
         
         if not should_plot:
             return
@@ -373,7 +377,8 @@ class CoefficientPlotCallback(Callback):
             should_plot = (epoch % self.plot_frequency == 0) or (epoch == self.total_epochs - 1)
         else:
             if self.total_epochs is not None:
-                should_plot = (epoch % (self.total_epochs // 4) == 0) or (epoch == self.total_epochs - 1)
+                div = max(1, self.total_epochs // 4)
+                should_plot = (epoch % div == 0) or (epoch == self.total_epochs - 1)
         
         if not should_plot:
             return
@@ -410,4 +415,3 @@ class CoefficientPlotCallback(Callback):
         plt.tight_layout()
         self._log_or_save_figure(fig, 'coefficient_evolution', epoch, simulation_object)
         plt.close(fig)
-

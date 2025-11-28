@@ -1,0 +1,94 @@
+import torch
+from abc import ABC, abstractmethod
+from typing import Tuple, Dict, Any
+from torch.func import vmap
+
+class TruthTableError(Exception):
+    def __init__(self, message, path=''):
+        self.path = path
+        super().__init__(f"{message} at branch '{path}'")
+
+class Loss(ABC):
+    """Abstract base class for loss functions."""
+
+    @abstractmethod
+    def loss(self, potential_tensor: torch.Tensor, trajectory_tensor: torch.Tensor, coeff_grid: torch.Tensor, dt: float) -> torch.Tensor:
+        """Computes the loss for a batch of trajectories.
+
+        Args:
+            potential_tensor: Potential values along trajectories. Shape: (Batch, Time_Steps+1).
+            trajectory_tensor: Trajectory data. Shape: (Batch, Spatial_Dim, Time_Steps+1, 2).
+            coeff_grid: Coefficient grid. Shape: (Num_Coeffs, Time_Steps).
+            dt: Time step size.
+
+        Returns:
+            The loss value for each trajectory. Shape: (Batch,).
+        """
+        pass
+
+    def _compute_direct_grad(self, loss_values):
+        loss_values.mean(axis = -1).backward()
+        pass
+
+    def _compute_malliavin_grad(self, loss_values, malliavian_weights):
+        #malliavian_weights are (num_samples, coeff_count, time_steps)
+        return (loss_values[:,None, None] * malliavian_weights).mean(axis = 0)
+
+    def compute_FRR_gradient(
+        self,
+        potential_obj: Any,
+        potential_tensor: torch.Tensor,
+        trajectory_tensor: torch.Tensor,
+        malliavian_weights: torch.Tensor,
+        coeff_grid: torch.Tensor,
+        dt: float
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Computes the gradient using the Forward-Reverse Reweighting (FRR) or similar surrogate method.
+
+        Args:
+            potential_obj: The potential object.
+            potential_tensor: Recorded potential values.
+            trajectory_tensor: Recorded trajectories.
+            malliavian_weights: Computed Malliavin weights for gradient estimation.
+            coeff_grid: The current coefficient grid.
+            dt: Time step.
+
+        Returns:
+            A tuple (total_loss, per_trajectory_loss).
+        """
+        pos_tensor_detached = trajectory_tensor[..., 0].detach()
+        # recompute to freeze the secondary reliance on the protocol through the trajectories
+        # we want dLoss/da where loss is given a trajectory and the mall weights carry the probability of the trajectory
+        def potential_at_t(pos_t, coeff_t):
+            return potential_obj.potential_value(pos_t, coeff_t)
+
+        # in dims: (2,1) -> for arg 0 pos iterate over dim 2 time, for arg 1 coeff iterate over dim 1 which is time
+        # outdims: 1, put time at the end
+        batched_time_potential = vmap(potential_at_t, in_dims=(2, 1), out_dims=1)
+
+        clean_potential_tensor = batched_time_potential(pos_tensor_detached[...,:-1], coeff_grid)
+
+        loss_values_direct = self.loss(
+            clean_potential_tensor,
+            trajectory_tensor.detach(), # detach to avoid double counting through the stochastic correction loss
+            coeff_grid,
+            dt
+        )
+
+        direct_grad_scalar = loss_values_direct.mean()
+
+        # direct loss for backwards, detach to avoid double counting through the stochastic correction loss
+        with torch.no_grad():
+            loss_values_for_scoring = self.loss(
+                potential_tensor,
+                trajectory_tensor,
+                coeff_grid,
+                dt
+            )
+
+        # Make sure the eventual backwards goes back through to the coeff grid and trainable params only
+        # Sum over (Coeffs, Time)
+        frr_term = (malliavian_weights.detach() * coeff_grid).sum(dim=(-2, -1))
+        surrogate_grad_scalar = (loss_values_for_scoring * frr_term).mean()
+
+        return direct_grad_scalar + surrogate_grad_scalar, loss_values_for_scoring

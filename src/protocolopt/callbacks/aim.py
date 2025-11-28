@@ -5,7 +5,7 @@ except ImportError:
     AIM_AVAILABLE = False
     print("Warning: Aim not installed. Install with 'pip install aim' to use AimCallback")
 
-from callbacks import Callback
+from ..core.callback import Callback
 import torch
 
 
@@ -97,9 +97,9 @@ class AimCallback(Callback):
             self.run['hparams']['smoothness_weight'] = simulation_object.loss.smoothness_weight
         
         # Log potential model info
-        self.run['hparams']['potential_model_type'] = type(simulation_object.potential_model).__name__
+        self.run['hparams']['protocol_type'] = type(simulation_object.protocol).__name__
         self.run['hparams']['potential_type'] = type(simulation_object.potential).__name__
-        self.run['hparams']['sim_engine_type'] = type(simulation_object.sim_engine).__name__
+        self.run['hparams']['simulator_type'] = type(simulation_object.simulator).__name__
     
     def on_epoch_end(self, simulation_object, sim_dict, loss_values, epoch):
         """Log metrics for each epoch"""
@@ -165,4 +165,3 @@ class AimCallback(Callback):
         self.run.close()
         
         print(f"Aim tracking completed. Run hash: {self.run.hash}")
-

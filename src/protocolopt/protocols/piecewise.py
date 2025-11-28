@@ -1,27 +1,24 @@
+from ..core.protocol import Protocol
 import torch
-import torch.nn.functional as F 
-from abc import ABC, abstractmethod
-class PotentialModel(ABC):
-    #potential models use any kind of differentiable math to go from a set
-    #of trainable parameters to a full tensor of values to be used in the potential
+import torch.nn.functional as F
+from typing import Optional, List
 
-    #fixed starting is a boolean, if True the starting potential is fixed and the mcmc sampler will only do warmup once 
-    def __init__(self, time_steps, fixed_starting) -> None:
-        self.time_steps = time_steps
-        self.fixed_starting = fixed_starting
-        
-    @abstractmethod
-    def get_coeff_grid(self):
-        #return a tensor of shape (coefficients, spatial dimensions, time)
-        pass
+class LinearPiecewise(Protocol):
+    """Protocol parameterized by linear interpolation between knots."""
 
-    @abstractmethod
-    def trainable_params(self):
-        # return the parameters you want attached to the optimizer as a list
-        pass
+    def __init__(self, coefficient_count: int, time_steps: int, knot_count: int, initial_coeff_guess: torch.Tensor, endpoints: Optional[torch.Tensor] = None) -> None:
+        """Initializes the LinearPiecewise protocol.
 
-class LinearPiecewise(PotentialModel):
-    def __init__(self, coefficient_count, time_steps, knot_count, initial_coeff_guess, endpoints = None) -> None:
+        Args:
+            coefficient_count: Number of coefficients to model.
+            time_steps: Number of time steps for interpolation.
+            knot_count: Total number of knots (including endpoints).
+            initial_coeff_guess: Initial guess for the trainable knots.
+            endpoints: Fixed values for the start and end knots. Shape: (Coeffs, 2).
+
+        Raises:
+            ValueError: If initial guess shape is inconsistent with knot count.
+        """
         if endpoints is not None:
             fixed_starting = True
         else:
@@ -40,17 +37,22 @@ class LinearPiecewise(PotentialModel):
 
         self.device = initial_coeff_guess.device
 
-    def _get_knots(self):
+    def _get_knots(self) -> torch.Tensor:
         if self.endpoints is not None:
             return torch.cat([self.endpoints[..., 0:1], self._trainable_params, self.endpoints[..., -1:]], dim=-1)
         else:
             return self.trainable_params
         
-    def get_coeff_grid(self):
-        #return a grid of shape (coefficient_count, time_steps)
+    def get_coeff_grid(self) -> torch.Tensor:
+        """Interpolates knots to get the full coefficient grid.
+
+        Returns:
+            Coefficient grid. Shape: (Coeffs, Time_Steps).
+        """
         knots = self._get_knots()
         coeff_grid = F.interpolate(knots.unsqueeze(0), size=self.time_steps, mode='linear', align_corners=True)
         return coeff_grid.squeeze(0)
     
-    def trainable_params(self):
+    def trainable_params(self) -> List[torch.nn.Parameter]:
+        """Returns the trainable knots."""
         return [self._trainable_params]
