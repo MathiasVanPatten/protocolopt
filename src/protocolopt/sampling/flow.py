@@ -5,10 +5,12 @@ import pyro.distributions.transforms as T
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
-from typing import Dict, Any, Tuple
-from ..core.potential import Potential
-from ..core.protocol import Protocol
-from ..core.loss import Loss
+from typing import Dict, Any, Tuple, TYPE_CHECKING
+from ..core.types import StateSpace
+if TYPE_CHECKING:
+    from ..core.potential import Potential
+    from ..core.protocol import Protocol
+    from ..core.loss import Loss
 
 class ConditionalFlow(McmcNuts, nn.Module):
     """Initial condition generator using a Conditional Normalizing Flow trained on MCMC samples."""
@@ -64,7 +66,7 @@ class ConditionalFlow(McmcNuts, nn.Module):
         self.flow_training_well_count = 2**self.spatial_dimensions
         self.flow_training_samples_per_well = params.get('flow_training_samples_per_well', 500)
 
-    def set_bounds_from_bits(self, target_bitstring: torch.Tensor, loss: Loss) -> None:
+    def set_bounds_from_bits(self, target_bitstring: torch.Tensor, loss: "Loss") -> None:
         """Updates sampling bounds to target a specific bitstring well.
 
         Args:
@@ -97,7 +99,7 @@ class ConditionalFlow(McmcNuts, nn.Module):
         # runs the parent class in global mode on this subset, basically redoing the per well logic but packed in a way the flow model needs to learn from
         self.samples_per_well = None
 
-    def _train_flow(self, potential: Potential, protocol: Protocol, loss: Loss) -> None:
+    def _train_flow(self, potential: "Potential", protocol: "Protocol", loss: "Loss") -> None:
         """Trains the normalizing flow on MCMC samples."""
         print(f"Generating training data for {self.flow_training_well_count} random wells using inherited NUTS...")
 
@@ -192,7 +194,7 @@ class ConditionalFlow(McmcNuts, nn.Module):
             self.mcmc_starting_spatial_bounds = original_bounds_backup
             self.mcmc_num_samples = original_mcmc_num_samples
 
-    def generate_initial_conditions(self, potential: Potential, protocol: Protocol, loss: Loss) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def generate_initial_conditions(self, potential: "Potential", protocol: "Protocol", loss: "Loss") -> Tuple[StateSpace, StateSpace, torch.Tensor]:
         """Generates initial conditions using the trained flow model.
 
         Args:
