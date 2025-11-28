@@ -132,7 +132,7 @@ class AimCallback(Callback):
         if hasattr(loss_object, 'compute_loss_components'):
             loss_components = loss_object.compute_loss_components(
                 potential_detached, trajectories_detached,
-                sim_dict['coeff_grid'], simulation_object.dt
+                sim_dict['protocol_tensor'], simulation_object.dt
             )
             
             # Track each component
@@ -152,7 +152,7 @@ class AimCallback(Callback):
         average_work = work_per_trajectory.mean().item()
         self.run.track(average_work, name='metrics/average_work', epoch=epoch)
     
-    def on_train_end(self, simulation_object, sim_dict, coeff_grid, epoch):
+    def on_train_end(self, simulation_object, sim_dict, protocol_tensor, epoch):
         """Finalize and close Aim run"""
         if self.run is None:
             return

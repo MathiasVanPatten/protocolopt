@@ -42,7 +42,7 @@ class LaplaceApproximation(InitialConditionGenerator):
 
     def _solve_landscape(self, potential: Potential, protocol: Protocol) -> None:
         """Computes the Hessian and log weights at the centers."""
-        coeff_at_t0 = protocol.get_coeff_grid()[:, 0]
+        coeff_at_t0 = protocol.get_protocol_tensor()[:, 0]
         def potential_kernel(x):
             return potential.potential_value(x, coeff_at_t0)
 

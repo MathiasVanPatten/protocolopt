@@ -82,7 +82,7 @@ class Simulation:
             debug_print: Whether to print debug info from simulator.
 
         Returns:
-            A tuple of (trajectories, potential_val, malliavian_weight, coeff_grid).
+            A tuple of (trajectories, potential_val, malliavian_weight, protocol_tensor).
         """
         initial_pos, initial_vel, noise = self.init_cond_generator.generate_initial_conditions(self.potential, self.protocol, self.loss)
 
@@ -93,7 +93,7 @@ class Simulation:
         if manual_noise is not None:
             noise = manual_noise
 
-        coeff_grid = self.protocol.get_coeff_grid()
+        protocol_tensor = self.protocol.get_protocol_tensor()
 
         trajectories, potential_val, malliavian_weight = self.simulator.make_trajectories(
             self.potential,
@@ -102,11 +102,11 @@ class Simulation:
             self.time_steps,
             noise,
             self.noise_sigma,
-            coeff_grid,
+            protocol_tensor,
             debug_print = debug_print
         )
 
-        return trajectories, potential_val, malliavian_weight, coeff_grid
+        return trajectories, potential_val, malliavian_weight, protocol_tensor
 
     def _setup_optimizer(self, optimizer_class = torch.optim.Adam):
         self.optimizer = optimizer_class(self.protocol.trainable_params(), lr=self.learning_rate)
@@ -126,11 +126,11 @@ class Simulation:
 
                 self.optimizer.zero_grad()
 
-                trajectories, potential_val, malliavian_weight, coeff_grid = self.simulate()
+                trajectories, potential_val, malliavian_weight, protocol_tensor = self.simulate()
 
                 total_loss, per_traj_loss = self.loss.compute_FRR_gradient( self.potential,
                     potential_val, trajectories, malliavian_weight,
-                    coeff_grid, self.dt
+                    protocol_tensor, self.dt
                 )
 
                 total_loss.backward()
@@ -146,7 +146,7 @@ class Simulation:
                     'trajectories': trajectories.detach(),
                     'potential': potential_val.detach(),
                     'malliavian_weight': malliavian_weight.detach(),
-                    'coeff_grid': coeff_grid.detach()
+                    'protocol_tensor': protocol_tensor.detach()
                 }
 
                 for callback in self.callbacks:
@@ -159,6 +159,6 @@ class Simulation:
             'malliavian_weight': malliavian_weight
         }
         for callback in self.callbacks:
-            callback.on_train_end(self, sim_dict, coeff_grid, epoch)
+            callback.on_train_end(self, sim_dict, protocol_tensor, epoch)
 
         logger.info('Training complete')

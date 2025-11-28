@@ -6,11 +6,11 @@ from typing import Optional, List
 class LinearPiecewise(Protocol):
     """Protocol parameterized by linear interpolation between knots."""
 
-    def __init__(self, coefficient_count: int, time_steps: int, knot_count: int, initial_coeff_guess: torch.Tensor, endpoints: Optional[torch.Tensor] = None) -> None:
+    def __init__(self, control_dim: int, time_steps: int, knot_count: int, initial_coeff_guess: torch.Tensor, endpoints: Optional[torch.Tensor] = None) -> None:
         """Initializes the LinearPiecewise protocol.
 
         Args:
-            coefficient_count: Number of coefficients to model.
+            control_dim: Number of coefficients to model.
             time_steps: Number of time steps for interpolation.
             knot_count: Total number of knots (including endpoints).
             initial_coeff_guess: Initial guess for the trainable knots.
@@ -24,10 +24,10 @@ class LinearPiecewise(Protocol):
         else:
             fixed_starting = False
         super().__init__(time_steps, fixed_starting)
-        if initial_coeff_guess.shape != (coefficient_count, knot_count if endpoints is None else knot_count - 2):
-            raise ValueError(f"Initial coefficient guess must be of shape (coefficient_count, knot_count if endpoints is None else knot_count - 2), got {initial_coeff_guess.shape}")
+        if initial_coeff_guess.shape != (control_dim, knot_count if endpoints is None else knot_count - 2):
+            raise ValueError(f"Initial coefficient guess must be of shape (control_dim, knot_count if endpoints is None else knot_count - 2), got {initial_coeff_guess.shape}")
         
-        self.coefficient_count = coefficient_count
+        self.control_dim = control_dim
         self.knot_count = knot_count
         self.endpoints = endpoints
         if self.endpoints is not None:
@@ -43,15 +43,15 @@ class LinearPiecewise(Protocol):
         else:
             return self.trainable_params
         
-    def get_coeff_grid(self) -> torch.Tensor:
+    def get_protocol_tensor(self) -> torch.Tensor:
         """Interpolates knots to get the full coefficient grid.
 
         Returns:
             Coefficient grid. Shape: (Coeffs, Time_Steps).
         """
         knots = self._get_knots()
-        coeff_grid = F.interpolate(knots.unsqueeze(0), size=self.time_steps, mode='linear', align_corners=True)
-        return coeff_grid.squeeze(0)
+        protocol_tensor = F.interpolate(knots.unsqueeze(0), size=self.time_steps, mode='linear', align_corners=True)
+        return protocol_tensor.squeeze(0)
     
     def trainable_params(self) -> List[torch.nn.Parameter]:
         """Returns the trainable knots."""

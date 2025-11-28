@@ -3,55 +3,53 @@ from .functional import variance_loss, work_loss, temporal_smoothness_penalty
 from typing import Dict, Optional, Union, List
 import torch
 
-class EndpointLossBase(Loss):
+class LogicGateEndpointLossBase(Loss):
     """Base class for losses that depend on the final state of the trajectory relative to target bits."""
 
     def __init__(self, midpoints: torch.Tensor, truth_table: Dict[int, Union[List[str], Dict]], bit_locations: torch.Tensor, exponent: int = 2, starting_bit_weights: Optional[torch.Tensor] = None):
-        """Initializes the EndpointLossBase.
+        """Initializes the LogicGateEndpointLossBase.
 
         Args:
-            midpoints: Midpoints defining bit boundaries in each spatial dimension.
-            truth_table: Dictionary defining valid transitions.
-                Structure: {input_bit_int: {input_bit_int_next_dim: ... [valid_output_bit_strings]}} or similar recursive structure.
-            bit_locations: Target locations for each bit configuration.
+            midpoints: Midpoints defining bit boundaries in each spatial dimension. Currently only
+                supports binary mapping. Should be a vector of midpoints for each spatial dimension.
+            truth_table: Dictionary defining valid transitions. It should be nested with one input bit
+                at a time as the keys with the innermost level showing the acceptable outputs (as a list
+                of bit strings) for that bit configuration. You must fully define the input/output space
+                in a 1-Many or 1-1 enforced configuration.
+            bit_locations: Target locations for each bit configuration. It is assumed that index 0 is
+                the location of 0b0, index 1 is the location of 0b1, etc. To the left of the midpoint
+                is 0 and the right is 1. Exactly on the midpoint maps to 0.
             exponent: Exponent for the distance metric (p-norm).
-            starting_bit_weights: Weights for each starting state.
-        """
-        #midpoints only supports binary mapping currently, it should be a vector of midpoints for each spatial dimension
-        #bit_locations is the ideal location of each bit for each spatial dimension, it's assumed that index 0 is the location of 0b0, index 1 is the location of 0b1, etc.
-        #to the left of which is 0 and the right of which is 1. Exactly the mapping midpoint will be a 0
-        #truth_table is a dict with the general form of the key being the input and the value being the expected output, it should be nested
-        #with one input bit at a time as the keys with the innermost level showing the acceptable outputs for that bit configuration.
-        #you must have a list of values, even if you only have one element
-        #you must fully define the input/output space in a 1-Many or 1-1 enforced configuration
-        #starting_bit_weights: optional tensor of weights for each starting state (int representation). Shape should match domain size.
+            starting_bit_weights: Optional tensor of weights for each starting state (int representation).
+                Shape should match domain size.
 
-        #Example for NAND with 2 bits with the rightmost bit being used as the output:
-        '''
+        Examples:
+            NAND with 2 bits with the rightmost bit being used as the output:
+
             {
-                0:{
+                0: {
                     0: ['01', '11'],
                     1: ['01', '11']
-                    }
-                1:{
+                },
+                1: {
                     0: ['01', '11'],
                     1: ['00', '10']
                 }
             }
-        '''
-        #example for NAND where only 11 is used as 1
-        '''
+
+            NAND where only 11 is used as 1:
+
             {
-                0:{
+                0: {
                     0: ['11'],
                     1: ['11']
-                    }
-                1:{
+                },
+                1: {
                     0: ['11'],
                     1: ['00', '10', '01']
                 }
             }
-        '''
+        """
         
         self.midpoints = midpoints
         self.bit_locations = bit_locations
@@ -61,8 +59,6 @@ class EndpointLossBase(Loss):
         self.domain = 2**self._get_depth_of_truth_table(truth_table)
         self.flattened_truth_table = {k : None for k in range(self.domain)}
         self._flatten_truth_table(truth_table)
-        print(self.flattened_truth_table)
-        # self._validate_flattened_truth_table()
         self._gen_validity_mapping()
 
     def _get_depth_of_truth_table(self, truth_table_dict):
@@ -98,8 +94,6 @@ class EndpointLossBase(Loss):
             
         return min_distances
 
-    # def loss(self, potential_tensor, trajectory_tensor):
-    #     return self._endpoint_loss(trajectory_tensor)
 
     def _gen_validity_mapping(self):
         self.validity = torch.zeros(self.domain, self.domain, dtype = torch.bool, device = self.bit_locations.device)
@@ -162,11 +156,11 @@ class EndpointLossBase(Loss):
                     raise TruthTableError(f"Missing output for {bit}", current_bit_sequence + str(bit))
                 self.flattened_truth_table[int(current_bit_sequence + str(bit), base = 2)] = list_to_add
 
-class StandardLoss(EndpointLossBase):
-    """Standard loss function combining endpoint error, work, variance, and smoothness."""
+class StandardLogicGateLoss(LogicGateEndpointLossBase):
+    """Standard loss function combining logic gate endpoint error, work, variance, and smoothness."""
 
     def __init__(self, midpoints, truth_table, bit_locations, endpoint_weight = 1, work_weight = 1, var_weight = 1, smoothness_weight = 1, exponent = 2, starting_bit_weights=None):
-        """Initializes StandardLoss.
+        """Initializes StandardLogicGateLoss.
 
         Args:
             midpoints: Bit boundaries.
@@ -185,13 +179,13 @@ class StandardLoss(EndpointLossBase):
         self.var_weight = var_weight
         self.smoothness_weight = smoothness_weight
 
-    def loss(self, potential_tensor: torch.Tensor, trajectory_tensor: torch.Tensor, coeff_grid: torch.Tensor, dt: float) -> torch.Tensor:
+    def loss(self, potential_tensor: torch.Tensor, trajectory_tensor: torch.Tensor, protocol_tensor: torch.Tensor, dt: float) -> torch.Tensor:
         """Computes the combined loss."""
         starting_bits_int = self._compute_starting_bits_int(trajectory_tensor)
         endpoint_loss = self._endpoint_loss(trajectory_tensor)
         work_loss_value = work_loss(potential_tensor)
         var_loss_value = variance_loss(trajectory_tensor, starting_bits_int, self.domain)
-        smoothness_loss_value = temporal_smoothness_penalty(coeff_grid, dt)
+        smoothness_loss_value = temporal_smoothness_penalty(protocol_tensor, dt)
         return (
             self.endpoint_weight * endpoint_loss
             + self.work_weight * work_loss_value
@@ -199,7 +193,7 @@ class StandardLoss(EndpointLossBase):
             + self.smoothness_weight * smoothness_loss_value
         )
     
-    def compute_loss_components(self, potential_tensor, trajectory_tensor, coeff_grid, dt):
+    def compute_loss_components(self, potential_tensor, trajectory_tensor, protocol_tensor, dt):
         """
         Compute individual loss components for logging/analysis.
         
@@ -214,7 +208,7 @@ class StandardLoss(EndpointLossBase):
         endpoint_loss_val = self._endpoint_loss(trajectory_tensor)
         work_loss_val = work_loss(potential_tensor)
         var_loss_val = variance_loss(trajectory_tensor, starting_bits_int, self.domain)
-        smoothness_loss_val = temporal_smoothness_penalty(coeff_grid, dt)
+        smoothness_loss_val = temporal_smoothness_penalty(protocol_tensor, dt)
         
         return {
             'endpoint_loss': endpoint_loss_val,

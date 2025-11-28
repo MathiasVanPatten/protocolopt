@@ -220,7 +220,7 @@ class McmcNuts(InitialConditionGenerator):
 
     def _log_prob(self, state_vectors: torch.Tensor, potential: Potential, protocol: Protocol) -> torch.Tensor:
         #exp(-beta * U), boltzman distribution assumed for posterior
-        coeff_at_t0 = protocol.get_coeff_grid()[:, 0]
+        coeff_at_t0 = protocol.get_protocol_tensor()[:, 0]
         return -self.beta * potential.potential_value(state_vectors, coeff_at_t0)
 
     def _posterior_for_mcmc(self, bounds_low: torch.Tensor, bounds_high: torch.Tensor, potential: Potential, protocol: Protocol) -> None:

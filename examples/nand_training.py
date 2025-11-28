@@ -3,10 +3,10 @@ import math
 from protocolopt.potentials import GeneralCoupledPotential
 from protocolopt.protocols import LinearPiecewise
 from protocolopt.simulators import EulerMaruyama
-from protocolopt.losses import StandardLoss
+from protocolopt.losses import StandardLogicGateLoss
 from protocolopt import Simulation
 from protocolopt.sampling import LaplaceApproximation
-from protocolopt.callbacks import TrajectoryPlotCallback, ConfusionMatrixCallback, PotentialLandscapePlotCallback, CoefficientPlotCallback
+from protocolopt.callbacks import TrajectoryPlotCallback, ConfusionMatrixCallback, PotentialLandscapePlotCallback, ProtocolPlotCallback
 try:
     from protocolopt.callbacks import AimCallback
     AIM_AVAILABLE = True
@@ -34,7 +34,7 @@ mass = 1.0
 # Protocol parameters
 spatial_dimensions = 2
 num_interactions = (spatial_dimensions * (spatial_dimensions - 1)) // 2
-coefficient_count = 3 * spatial_dimensions + num_interactions
+control_dim = 3 * spatial_dimensions + num_interactions
 num_coefficients_time = 16
 
 # Define Endpoints
@@ -90,7 +90,7 @@ initial_coeff_guess += 0.01 * torch.randn_like(initial_coeff_guess)
 
 # Instantiate Protocol (LinearPiecewise)
 protocol = LinearPiecewise(
-    coefficient_count=coefficient_count,
+    control_dim=control_dim,
     time_steps=time_steps,
     knot_count=num_coefficients_time+2,
     initial_coeff_guess=initial_coeff_guess,
@@ -109,7 +109,7 @@ simulator = EulerMaruyama(
     compile_mode=True
 )
 
-# Create loss function (StandardLoss)
+# Create loss function (StandardLogicGateLoss)
 midpoints = torch.tensor([0.0, 0.0], device=device)
 
 # bit_locations ordered 0 to 3 for integers 00, 01, 10, 11
@@ -137,7 +137,7 @@ truth_table = {
 starting_bit_weights = torch.ones(4, device=device)
 starting_bit_weights[3] = 3.0
 
-loss = StandardLoss(
+loss = StandardLogicGateLoss(
     midpoints=midpoints,
     truth_table=truth_table,
     bit_locations=bit_locations,
@@ -194,7 +194,7 @@ potential_landscape_callback = PotentialLandscapePlotCallback(
 )
 callbacks.append(potential_landscape_callback)
 
-coefficient_callback = CoefficientPlotCallback(
+coefficient_callback = ProtocolPlotCallback(
     save_dir='figs',
     plot_frequency=None
 )

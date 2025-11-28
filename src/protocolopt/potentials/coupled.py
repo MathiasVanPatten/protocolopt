@@ -27,18 +27,18 @@ class GeneralCoupledPotential(Potential):
 
         self.triu_indices = torch.triu_indices(row=spatial_dimensions, col=spatial_dimensions, offset=1)
 
-    def potential_value(self, space_grid: torch.Tensor, coeff_grid: torch.Tensor) -> torch.Tensor:
+    def potential_value(self, space_grid: torch.Tensor, protocol_tensor: torch.Tensor) -> torch.Tensor:
         """Computes the coupled potential value.
 
         Args:
             space_grid: Spatial coordinates. Shape: (Batch, N) or (N,).
-            coeff_grid: Coefficients vector. Layout: [N Quartics, N Quadratics, N Linears (optional), K Interactions (optional)].
+            protocol_tensor: Coefficients vector. Layout: [N Quartics, N Quadratics, N Linears (optional), K Interactions (optional)].
 
         Returns:
             Potential value. Shape: (Batch,) or scalar.
         """
         # space_grid: (Batch, N) or (N,)
-        # coeff_grid: (Total_Coeffs)
+        # protocol_tensor: (Total_Coeffs)
         is_unbatched = space_grid.ndim == 1
         if is_unbatched:
             space_grid = space_grid.unsqueeze(0)
@@ -48,23 +48,23 @@ class GeneralCoupledPotential(Potential):
         current_idx = 0
 
         # Quartic terms (a)
-        a = coeff_grid[current_idx : current_idx + N]
+        a = protocol_tensor[current_idx : current_idx + N]
         current_idx += N
 
         # Quadratic terms (b)
-        b = coeff_grid[current_idx : current_idx + N]
+        b = protocol_tensor[current_idx : current_idx + N]
         current_idx += N
 
         # Linear terms (c)
         if self.has_c:
-            c = coeff_grid[current_idx : current_idx + N]
+            c = protocol_tensor[current_idx : current_idx + N]
             current_idx += N
         else:
             c = torch.zeros_like(a)
 
         # Interaction terms
         if self.has_mix:
-            mix = coeff_grid[current_idx : ]
+            mix = protocol_tensor[current_idx : ]
         else:
             mix = None
 

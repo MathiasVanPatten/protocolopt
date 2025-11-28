@@ -2,7 +2,7 @@ from .plotting import (
     TrajectoryPlotCallback,
     ConfusionMatrixCallback,
     PotentialLandscapePlotCallback,
-    CoefficientPlotCallback
+    ProtocolPlotCallback
 )
 
 # Graceful import for AimCallback to handle missing dependency
@@ -15,6 +15,6 @@ __all__ = [
     "TrajectoryPlotCallback",
     "ConfusionMatrixCallback",
     "PotentialLandscapePlotCallback",
-    "CoefficientPlotCallback",
+    "ProtocolPlotCallback",
     "AimCallback"
 ]

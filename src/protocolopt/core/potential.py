@@ -17,12 +17,12 @@ class Potential(ABC):
         self.compile_mode = compile_mode
 
     @abstractmethod
-    def potential_value(self, space_grid: torch.Tensor, coeff_grid: torch.Tensor) -> torch.Tensor:
+    def potential_value(self, space_grid: torch.Tensor, protocol_tensor: torch.Tensor) -> torch.Tensor:
         """Computes the potential energy value.
 
         Args:
             space_grid: The spatial coordinates. Shape: (Batch, Spatial_Dim) or (Spatial_Dim,).
-            coeff_grid: The coefficients for the potential. Shape: (Num_Coeffs,).
+            protocol_tensor: The coefficients for the potential. Shape: (Control_Dim,).
 
         Returns:
             The potential energy at each point. Shape: (Batch,) or scalar.
@@ -43,18 +43,18 @@ class Potential(ABC):
 
         return self._dv_dx_batched, self._dv_dxda_batched
 
-    def get_potential_value(self, space_grid: torch.Tensor, coeff_grid: torch.Tensor, time_index: int) -> torch.Tensor:
+    def get_potential_value(self, space_grid: torch.Tensor, protocol_tensor: torch.Tensor, time_index: int) -> torch.Tensor:
         """Helper to get potential value at a specific time index."""
-        return self.potential_value(space_grid, coeff_grid[:, time_index])
+        return self.potential_value(space_grid, protocol_tensor[:, time_index])
 
-    def dv_dx(self, space_grid: torch.Tensor, coeff_grid: torch.Tensor, time_index: int) -> torch.Tensor:
+    def dv_dx(self, space_grid: torch.Tensor, protocol_tensor: torch.Tensor, time_index: int) -> torch.Tensor:
         """Computes the gradient of the potential with respect to spatial coordinates."""
-        coeff = coeff_grid[:, time_index]
+        coeff = protocol_tensor[:, time_index]
         batch_dvdx_func, _ = self._get_kernels()
         return batch_dvdx_func(space_grid, coeff)
 
-    def dv_dxda(self, space_grid: torch.Tensor, coeff_grid: torch.Tensor, time_index: int) -> torch.Tensor:
+    def dv_dxda(self, space_grid: torch.Tensor, protocol_tensor: torch.Tensor, time_index: int) -> torch.Tensor:
         """Computes the sensitivity of the gradient with respect to coefficients."""
-        coeff = coeff_grid[:, time_index]
+        coeff = protocol_tensor[:, time_index]
         _, batch_dvdxda_func = self._get_kernels()
         return batch_dvdxda_func(space_grid, coeff)

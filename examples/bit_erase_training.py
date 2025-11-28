@@ -3,10 +3,10 @@ import math
 from protocolopt.potentials import GeneralCoupledPotential
 from protocolopt.protocols import LinearPiecewise
 from protocolopt.simulators import EulerMaruyama
-from protocolopt.losses import StandardLoss
+from protocolopt.losses import StandardLogicGateLoss
 from protocolopt.core.simulation import Simulation
 from protocolopt.sampling import LaplaceApproximation
-from protocolopt.callbacks import TrajectoryPlotCallback, ConfusionMatrixCallback, PotentialLandscapePlotCallback, CoefficientPlotCallback
+from protocolopt.callbacks import TrajectoryPlotCallback, ConfusionMatrixCallback, PotentialLandscapePlotCallback, ProtocolPlotCallback
 try:
     from protocolopt.callbacks import AimCallback
     AIM_AVAILABLE = True
@@ -89,7 +89,7 @@ initial_coeff_guess += 0.01 * torch.randn_like(initial_coeff_guess)
 
 # Instantiate Protocol (LinearPiecewise)
 protocol = LinearPiecewise(
-    coefficient_count=endpoints.shape[0],
+    control_dim=endpoints.shape[0],
     time_steps=time_steps,
     knot_count=num_coefficients+2,
     initial_coeff_guess=initial_coeff_guess,
@@ -108,12 +108,12 @@ simulator = EulerMaruyama(
     compile_mode=True
 )
 
-# Create loss function (StandardLoss)
+# Create loss function (StandardLogicGateLoss)
 midpoints = torch.tensor([0.0], device=device)
 bit_locations = torch.tensor([[-centers], [centers]], device=device)
 truth_table = {0: ['0'], 1: ['0']}
 
-loss = StandardLoss(
+loss = StandardLogicGateLoss(
     midpoints=midpoints,
     truth_table=truth_table,
     bit_locations=bit_locations,
@@ -171,7 +171,7 @@ potential_landscape_callback = PotentialLandscapePlotCallback(
 )
 callbacks.append(potential_landscape_callback)
 
-coefficient_callback = CoefficientPlotCallback(
+coefficient_callback = ProtocolPlotCallback(
     save_dir='figs',
     plot_frequency=None
 )

@@ -16,11 +16,11 @@ class Protocol(ABC):
         self.fixed_starting = fixed_starting
 
     @abstractmethod
-    def get_coeff_grid(self) -> torch.Tensor:
+    def get_protocol_tensor(self) -> torch.Tensor:
         """Returns the full grid of coefficients over time.
 
         Returns:
-            A tensor of coefficients. Shape: (Num_Coeffs, Time_Steps).
+            A tensor of coefficients. Shape: (Control_Dim, Time_Steps).
         """
         pass
 

@@ -64,7 +64,7 @@ class EulerMaruyama(Simulator):
         time_steps: int,
         noise: torch.Tensor,
         noise_sigma: float,
-        coeff_grid: torch.Tensor,
+        protocol_tensor: torch.Tensor,
         debug_print: bool = False
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Generates trajectories based on the system dynamics.
@@ -76,14 +76,14 @@ class EulerMaruyama(Simulator):
             time_steps: Number of integration steps to perform.
             noise: Brownian noise tensor. Shape: (Num_Traj, Spatial_Dim, Time_Steps).
             noise_sigma: Standard deviation of the noise.
-            coeff_grid: Time-dependent coefficients for the potential. Shape: (Num_Coeffs, Time_Steps).
+            protocol_tensor: Time-dependent coefficients for the potential. Shape: (Control_Dim, Time_Steps).
             debug_print: If True, prints statistics about gradients during execution.
 
         Returns:
             A tuple containing:
             - **trajectories**: Full path of particles. Shape (Num_Traj, Spatial_Dim, Time_Steps+1, 2).
             - **potential_val**: Potential energy at each step. Shape (Num_Traj, Time_Steps).
-            - **malliavian_weight**: Computed path weights. Shape (Num_Traj, Num_Coeffs, Time_Steps).
+            - **malliavian_weight**: Computed path weights. Shape (Num_Traj, Control_Dim, Time_Steps).
 
         Raises:
             ValueError: If an invalid simulation mode is selected.
@@ -111,9 +111,9 @@ class EulerMaruyama(Simulator):
                 current_pos = traj_pos_list[-1]
                 current_vel = traj_vel_list[-1]
                 
-                dv_dx = potential.dv_dx(current_pos, coeff_grid, i)
-                U = potential.get_potential_value(current_pos, coeff_grid, i)
-                dv_dxda = potential.dv_dxda(current_pos, coeff_grid, i)
+                dv_dx = potential.dv_dx(current_pos, protocol_tensor, i)
+                U = potential.get_potential_value(current_pos, protocol_tensor, i)
+                dv_dxda = potential.dv_dxda(current_pos, protocol_tensor, i)
 
                 # Compute next positions and velocities
                 next_pos, next_vel = self._compiled_underdamped_step(
@@ -129,9 +129,9 @@ class EulerMaruyama(Simulator):
                 
                 current_pos = traj_pos_list[-1]
 
-                dv_dx = potential.dv_dx(current_pos, coeff_grid, i)
-                U = potential.get_potential_value(current_pos, coeff_grid, i)
-                dv_dxda = potential.dv_dxda(current_pos, coeff_grid, i)
+                dv_dx = potential.dv_dx(current_pos, protocol_tensor, i)
+                U = potential.get_potential_value(current_pos, protocol_tensor, i)
+                dv_dxda = potential.dv_dxda(current_pos, protocol_tensor, i)
             
                 next_pos = self._compiled_overdamped_step(current_pos, dv_dx, noise[..., i], dt, self.gamma)
                 traj_pos_list.append(next_pos)

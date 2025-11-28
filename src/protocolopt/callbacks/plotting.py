@@ -139,7 +139,7 @@ class ConfusionMatrixCallback(Callback):
         
         # Check if loss supports binary trajectory computation
         if not hasattr(loss_object, 'compute_binary_trajectory_info'):
-            return  # Only works with EndpointLossBase-derived losses
+            return  # Only works with LogicGateEndpointLossBase-derived losses
         
         # Compute binary trajectory information
         binary_trajectory_dict = loss_object.compute_binary_trajectory_info(sim_dict['trajectories'])
@@ -249,8 +249,8 @@ class PotentialLandscapePlotCallback(Callback):
         if not should_plot:
             return
         
-        coeff_grid = sim_dict.get('coeff_grid', None)
-        if coeff_grid is None:
+        protocol_tensor = sim_dict.get('protocol_tensor', None)
+        if protocol_tensor is None:
             return
         
         trajectories = sim_dict['trajectories']
@@ -285,7 +285,7 @@ class PotentialLandscapePlotCallback(Callback):
 
             potential_values = torch.zeros(self.spatial_resolution, time_steps)
             for t_idx in range(time_steps):
-                coeff_slice = coeff_grid[:, t_idx]
+                coeff_slice = protocol_tensor[:, t_idx]
                 potential_values[:, t_idx] = potential_obj.potential_value(query_points, coeff_slice).cpu()
             
             potential_values = potential_values.sign() * ((potential_values.abs() + 1).log10())
@@ -344,7 +344,7 @@ class PotentialLandscapePlotCallback(Callback):
             self._log_or_save_figure(fig, f'potential_landscape_dim_{dim_idx}', epoch, simulation_object)
             plt.close(fig)
 
-class CoefficientPlotCallback(Callback):
+class ProtocolPlotCallback(Callback):
     
     def __init__(self, save_dir='figs', plot_frequency=None):
         self.save_dir = Path(save_dir)
@@ -383,33 +383,33 @@ class CoefficientPlotCallback(Callback):
         if not should_plot:
             return
         
-        coeff_grid = sim_dict.get('coeff_grid', None)
-        if coeff_grid is None:
+        protocol_tensor = sim_dict.get('protocol_tensor', None)
+        if protocol_tensor is None:
             return
         
-        coeff_grid_cpu = coeff_grid.cpu().numpy()
-        coefficient_count, time_steps = coeff_grid_cpu.shape
+        protocol_tensor_cpu = protocol_tensor.cpu().numpy()
+        control_dim, time_steps = protocol_tensor_cpu.shape
         time_array = np.arange(time_steps)
         
-        if coefficient_count <= 4:
-            ncols = coefficient_count
+        if control_dim <= 4:
+            ncols = control_dim
             nrows = 1
         else:
             ncols = 2
-            nrows = (coefficient_count + 1) // 2
+            nrows = (control_dim + 1) // 2
         
         fig, axes = plt.subplots(nrows, ncols, figsize=(5*ncols, 4*nrows), squeeze=False)
         axes = axes.flatten()
         
-        for coeff_idx in range(coefficient_count):
+        for coeff_idx in range(control_dim):
             ax = axes[coeff_idx]
-            ax.plot(time_array, coeff_grid_cpu[coeff_idx, :])
+            ax.plot(time_array, protocol_tensor_cpu[coeff_idx, :])
             ax.set_xlabel('Time')
             ax.set_ylabel(f'Coeff {coeff_idx}')
             ax.set_title(f'Coefficient {coeff_idx}')
             ax.grid(True, alpha=0.3)
         
-        for idx in range(coefficient_count, len(axes)):
+        for idx in range(control_dim, len(axes)):
             axes[idx].set_visible(False)
         
         plt.tight_layout()
