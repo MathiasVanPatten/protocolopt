@@ -1,6 +1,7 @@
 import torch
 from abc import ABC, abstractmethod
 from typing import List
+from .types import ControlSignal
 
 class Protocol(ABC):
     """Abstract base class for time-dependent protocols (coefficients)."""
@@ -16,7 +17,7 @@ class Protocol(ABC):
         self.fixed_starting = fixed_starting
 
     @abstractmethod
-    def get_protocol_tensor(self) -> torch.Tensor:
+    def get_protocol_tensor(self) -> ControlSignal:
         """Returns the full grid of coefficients over time.
 
         Returns:

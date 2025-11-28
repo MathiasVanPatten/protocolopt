@@ -6,14 +6,17 @@ except ImportError:
     print("Warning: Aim not installed. Install with 'pip install aim' to use AimCallback")
 
 from ..core.callback import Callback
+from typing import Optional, Dict, Any, TYPE_CHECKING
 import torch
 
+if TYPE_CHECKING:
+    from ..core.protocol_optimizer import ProtocolOptimizer
 
 class AimCallback(Callback):
     """Callback for experiment tracking with Aim"""
     
-    def __init__(self, experiment_name=None, repo_path=None, log_system_params=True, 
-                 capture_terminal_logs=False, run_hash=None):
+    def __init__(self, experiment_name: Optional[str] = None, repo_path: Optional[str] = None, log_system_params: bool = True,
+                 capture_terminal_logs: bool = False, run_hash: Optional[str] = None):
         """
         Args:
             experiment_name: Name for the experiment
@@ -32,7 +35,7 @@ class AimCallback(Callback):
         self.run_hash = run_hash
         self.run = None
     
-    def on_train_start(self, simulation_object):
+    def on_train_start(self, optimizer_object: "ProtocolOptimizer") -> None:
         """Initialize Aim Run and log hyperparameters"""
         # Initialize Aim run
         self.run = Run(
@@ -45,19 +48,19 @@ class AimCallback(Callback):
         
         # Log hyperparameters
         self.run['hparams'] = {
-            'learning_rate': simulation_object.learning_rate,
-            'epochs': simulation_object.epochs,
-            'time_steps': simulation_object.time_steps,
-            'spatial_dimensions': simulation_object.spatial_dimensions,
-            'beta': simulation_object.beta,
-            'gamma': simulation_object.gamma,
-            'dt': simulation_object.dt,
-            'noise_sigma': simulation_object.noise_sigma.item() if torch.is_tensor(simulation_object.noise_sigma) else simulation_object.noise_sigma,
+            'learning_rate': optimizer_object.learning_rate,
+            'epochs': optimizer_object.epochs,
+            'time_steps': optimizer_object.time_steps,
+            'spatial_dimensions': optimizer_object.spatial_dimensions,
+            'beta': optimizer_object.beta,
+            'gamma': optimizer_object.gamma,
+            'dt': optimizer_object.dt,
+            'noise_sigma': optimizer_object.noise_sigma.item() if torch.is_tensor(optimizer_object.noise_sigma) else optimizer_object.noise_sigma,
         }
         
         # Add MCMC parameters from generator if available
-        if hasattr(simulation_object, 'init_cond_generator'):
-            ic_gen = simulation_object.init_cond_generator
+        if hasattr(optimizer_object, 'init_cond_generator'):
+            ic_gen = optimizer_object.init_cond_generator
             self.run['hparams']['ic_gen_type'] = type(ic_gen).__name__
 
             if hasattr(ic_gen, 'mcmc_warmup_ratio'):
@@ -87,21 +90,21 @@ class AimCallback(Callback):
                  self.run['hparams']['num_centers'] = ic_gen.centers.shape[0] if torch.is_tensor(ic_gen.centers) else len(ic_gen.centers)
         
         # Log loss function parameters if available
-        if hasattr(simulation_object.loss, 'endpoint_weight'):
-            self.run['hparams']['endpoint_weight'] = simulation_object.loss.endpoint_weight
-        if hasattr(simulation_object.loss, 'work_weight'):
-            self.run['hparams']['work_weight'] = simulation_object.loss.work_weight
-        if hasattr(simulation_object.loss, 'var_weight'):
-            self.run['hparams']['var_weight'] = simulation_object.loss.var_weight
-        if hasattr(simulation_object.loss, 'smoothness_weight'):
-            self.run['hparams']['smoothness_weight'] = simulation_object.loss.smoothness_weight
+        if hasattr(optimizer_object.loss, 'endpoint_weight'):
+            self.run['hparams']['endpoint_weight'] = optimizer_object.loss.endpoint_weight
+        if hasattr(optimizer_object.loss, 'work_weight'):
+            self.run['hparams']['work_weight'] = optimizer_object.loss.work_weight
+        if hasattr(optimizer_object.loss, 'var_weight'):
+            self.run['hparams']['var_weight'] = optimizer_object.loss.var_weight
+        if hasattr(optimizer_object.loss, 'smoothness_weight'):
+            self.run['hparams']['smoothness_weight'] = optimizer_object.loss.smoothness_weight
         
         # Log potential model info
-        self.run['hparams']['protocol_type'] = type(simulation_object.protocol).__name__
-        self.run['hparams']['potential_type'] = type(simulation_object.potential).__name__
-        self.run['hparams']['simulator_type'] = type(simulation_object.simulator).__name__
+        self.run['hparams']['protocol_type'] = type(optimizer_object.protocol).__name__
+        self.run['hparams']['potential_type'] = type(optimizer_object.potential).__name__
+        self.run['hparams']['simulator_type'] = type(optimizer_object.simulator).__name__
     
-    def on_epoch_end(self, simulation_object, sim_dict, loss_values, epoch):
+    def on_epoch_end(self, optimizer_object: "ProtocolOptimizer", sim_dict: Dict[str, Any], loss_values: torch.Tensor, epoch: int) -> None:
         """Log metrics for each epoch"""
         if self.run is None:
             return
@@ -118,21 +121,21 @@ class AimCallback(Callback):
         self.run.track(max_loss, name='loss/max', epoch=epoch)
         
         # Compute and track additional metrics
-        loss_object = simulation_object.loss
+        loss_object = optimizer_object.loss
         
-        trajectories_detached = sim_dict['trajectories']
+        microstate_paths_detached = sim_dict['microstate_paths']
         potential_detached = sim_dict['potential']
         
-        # 1. Binary error rate (% of trajectories ending in invalid states)
+        # 1. Binary error rate (% of paths ending in invalid states)
         if hasattr(loss_object, 'compute_binary_error_rate'):
-            binary_error_rate = loss_object.compute_binary_error_rate(trajectories_detached)
+            binary_error_rate = loss_object.compute_binary_error_rate(microstate_paths_detached)
             self.run.track(binary_error_rate, name='metrics/binary_error_rate', epoch=epoch)
         
         # 2. Individual loss components
         if hasattr(loss_object, 'compute_loss_components'):
             loss_components = loss_object.compute_loss_components(
-                potential_detached, trajectories_detached,
-                sim_dict['protocol_tensor'], simulation_object.dt
+                potential_detached, microstate_paths_detached,
+                sim_dict['protocol_tensor'], optimizer_object.dt
             )
             
             # Track each component
@@ -146,13 +149,13 @@ class AimCallback(Callback):
             self.run.track(variance_mean, name='loss_components/variance', epoch=epoch)
             self.run.track(smoothness_mean, name='loss_components/smoothness', epoch=epoch)
         
-        # 3. Average work (mean delta V across trajectories)
-        # Work is computed as sum of (V[t+1] - V[t]) over time for each trajectory
-        work_per_trajectory = (potential_detached[..., 1:] - potential_detached[..., :-1]).sum(dim=-1)
-        average_work = work_per_trajectory.mean().item()
+        # 3. Average work (mean delta V across paths)
+        # Work is computed as sum of (V[t+1] - V[t]) over time for each path
+        work_per_path = (potential_detached[..., 1:] - potential_detached[..., :-1]).sum(dim=-1)
+        average_work = work_per_path.mean().item()
         self.run.track(average_work, name='metrics/average_work', epoch=epoch)
     
-    def on_train_end(self, simulation_object, sim_dict, protocol_tensor, epoch):
+    def on_train_end(self, optimizer_object: "ProtocolOptimizer", sim_dict: Dict[str, Any], protocol_tensor: torch.Tensor, epoch: int) -> None:
         """Finalize and close Aim run"""
         if self.run is None:
             return

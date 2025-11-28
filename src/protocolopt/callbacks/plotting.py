@@ -6,6 +6,11 @@ from PIL import Image
 import io
 import numpy as np
 from matplotlib.colors import ListedColormap
+from typing import Optional, Dict, Any, TYPE_CHECKING
+from ..core.types import MicrostatePaths, ControlSignal, PotentialTensor
+
+if TYPE_CHECKING:
+    from ..core.protocol_optimizer import ProtocolOptimizer
 
 try:
     from .aim import AimCallback
@@ -18,24 +23,24 @@ plt.ioff()
 
 
 class TrajectoryPlotCallback(Callback):
-    """Callback for plotting trajectory positions over time"""
+    """Callback for plotting microstate paths over time"""
     
-    def __init__(self, save_dir='figs', plot_frequency=None, num_trajectories=100):
+    def __init__(self, save_dir: str = 'figs', plot_frequency: Optional[int] = None, num_trajectories: int = 100):
         """
         Args:
             save_dir: Directory to save plots (relative to working directory or absolute path)
             plot_frequency: How often to plot (e.g., every N epochs). If None, plots at 0, 25%, 50%, 75%, 100%
-            num_trajectories: Number of random trajectories to plot (default: 100)
+            num_trajectories: Number of random paths to plot (default: 100)
         """
         self.save_dir = Path(save_dir)
         self.save_dir.mkdir(parents=True, exist_ok=True)
         self.plot_frequency = plot_frequency
         self.num_trajectories = num_trajectories
-        self.total_epochs = None
+        self.total_epochs: Optional[int] = None
     
-    def _log_or_save_figure(self, fig, name, epoch, simulation_object, dpi=150):
+    def _log_or_save_figure(self, fig: plt.Figure, name: str, epoch: int, optimizer_object: "ProtocolOptimizer", dpi: int = 150) -> None:
         """Log figure to Aim if available, otherwise save to disk"""
-        aim_callback = next((cb for cb in simulation_object.callbacks 
+        aim_callback = next((cb for cb in optimizer_object.callbacks
                             if type(cb).__name__ == 'AimCallback'), None)
         
         if AIM_AVAILABLE and aim_callback and hasattr(aim_callback, 'run') and aim_callback.run:
@@ -50,10 +55,10 @@ class TrajectoryPlotCallback(Callback):
             filepath = self.save_dir / f'{name}_epoch_{epoch:04d}.png'
             fig.savefig(filepath, dpi=dpi)
     
-    def on_train_start(self, simulation_object):
-        self.total_epochs = simulation_object.epochs
+    def on_train_start(self, optimizer_object: "ProtocolOptimizer") -> None:
+        self.total_epochs = optimizer_object.epochs
     
-    def on_epoch_end(self, simulation_object, sim_dict, loss_values, epoch):
+    def on_epoch_end(self, optimizer_object: "ProtocolOptimizer", sim_dict: Dict[str, Any], loss_values: torch.Tensor, epoch: int) -> None:
         should_plot = False
         if self.plot_frequency is not None:
             should_plot = (epoch % self.plot_frequency == 0) or (epoch == self.total_epochs - 1)
@@ -65,32 +70,32 @@ class TrajectoryPlotCallback(Callback):
         if not should_plot:
             return
         
-        time_steps = simulation_object.time_steps
-        trajectories = sim_dict['trajectories']
-        spatial_dimensions = simulation_object.spatial_dimensions
+        time_steps = optimizer_object.time_steps
+        microstate_paths: MicrostatePaths = sim_dict['microstate_paths']
+        spatial_dimensions = optimizer_object.spatial_dimensions
         
-        # Choose random trajectory indices
-        num_trajectories = trajectories.shape[0]
-        sample_size = min(self.num_trajectories, num_trajectories)
-        random_indices = torch.randperm(num_trajectories)[:sample_size]
+        # Choose random path indices
+        num_paths = microstate_paths.shape[0]
+        sample_size = min(self.num_trajectories, num_paths)
+        random_indices = torch.randperm(num_paths)[:sample_size]
         
         # Create separate plot for each spatial dimension
         for dim_idx in range(spatial_dimensions):
             # Extract position data for this dimension
-            trajectory_positions = trajectories[random_indices, dim_idx, :, 0].cpu()
+            path_positions = microstate_paths[random_indices, dim_idx, :, 0].cpu()
             
             fig = plt.figure()
-            plt.plot(torch.linspace(0, time_steps, time_steps + 1).cpu(), trajectory_positions.T)
+            plt.plot(torch.linspace(0, time_steps, time_steps + 1).cpu(), path_positions.T)
             plt.xlabel('Time')
             plt.ylabel(f'Position (Dimension {dim_idx})')
-            plt.title(f'Trajectory Positions Over Time - Dim {dim_idx} (Epoch {epoch})')
-            self._log_or_save_figure(fig, f'trajectory_dim_{dim_idx}', epoch, simulation_object)
+            plt.title(f'Microstate Positions Over Time - Dim {dim_idx} (Epoch {epoch})')
+            self._log_or_save_figure(fig, f'trajectory_dim_{dim_idx}', epoch, optimizer_object)
             plt.close()
 
 class ConfusionMatrixCallback(Callback):
     """Callback for plotting confusion matrix of binary state transitions"""
     
-    def __init__(self, save_dir='figs', plot_frequency=None):
+    def __init__(self, save_dir: str = 'figs', plot_frequency: Optional[int] = None):
         """
         Args:
             save_dir: Directory to save plots
@@ -99,11 +104,11 @@ class ConfusionMatrixCallback(Callback):
         self.save_dir = Path(save_dir)
         self.save_dir.mkdir(parents=True, exist_ok=True)
         self.plot_frequency = plot_frequency
-        self.total_epochs = None
+        self.total_epochs: Optional[int] = None
     
-    def _log_or_save_figure(self, fig, name, epoch, simulation_object, dpi=150):
+    def _log_or_save_figure(self, fig: plt.Figure, name: str, epoch: int, optimizer_object: "ProtocolOptimizer", dpi: int = 150) -> None:
         """Log figure to Aim if available, otherwise save to disk"""
-        aim_callback = next((cb for cb in simulation_object.callbacks 
+        aim_callback = next((cb for cb in optimizer_object.callbacks
                             if type(cb).__name__ == 'AimCallback'), None)
         
         if AIM_AVAILABLE and aim_callback and hasattr(aim_callback, 'run') and aim_callback.run:
@@ -118,10 +123,10 @@ class ConfusionMatrixCallback(Callback):
             filepath = self.save_dir / f'{name}_epoch_{epoch:04d}.png'
             fig.savefig(filepath, dpi=dpi)
     
-    def on_train_start(self, simulation_object):
-        self.total_epochs = simulation_object.epochs
+    def on_train_start(self, optimizer_object: "ProtocolOptimizer") -> None:
+        self.total_epochs = optimizer_object.epochs
     
-    def on_epoch_end(self, simulation_object, sim_dict, loss_values, epoch):
+    def on_epoch_end(self, optimizer_object: "ProtocolOptimizer", sim_dict: Dict[str, Any], loss_values: torch.Tensor, epoch: int) -> None:
         # Determine if we should plot this epoch
         should_plot = False
         if self.plot_frequency is not None:
@@ -135,14 +140,14 @@ class ConfusionMatrixCallback(Callback):
             return
         
         # Get the loss object
-        loss_object = simulation_object.loss
+        loss_object = optimizer_object.loss
         
         # Check if loss supports binary trajectory computation
         if not hasattr(loss_object, 'compute_binary_trajectory_info'):
             return  # Only works with LogicGateEndpointLossBase-derived losses
         
         # Compute binary trajectory information
-        binary_trajectory_dict = loss_object.compute_binary_trajectory_info(sim_dict['trajectories'])
+        binary_trajectory_dict = loss_object.compute_binary_trajectory_info(sim_dict['microstate_paths'])
         starting_bits_int = binary_trajectory_dict['starting_bits_int'].cpu().numpy()
         ending_bits_int = binary_trajectory_dict['ending_bits_int'].cpu().numpy()
         
@@ -205,20 +210,20 @@ class ConfusionMatrixCallback(Callback):
         ax.set_title(f'Binary State Transition Confusion Matrix (Epoch {epoch})\nGreen=Valid, Red=Invalid')
         
         plt.tight_layout()
-        self._log_or_save_figure(fig, 'confusion_matrix', epoch, simulation_object, dpi=150)
+        self._log_or_save_figure(fig, 'confusion_matrix', epoch, optimizer_object, dpi=150)
         plt.close()
 
 class PotentialLandscapePlotCallback(Callback):
     
-    def __init__(self, save_dir='figs', plot_frequency=None, spatial_resolution=100, trajectories_per_bit=10):
+    def __init__(self, save_dir: str = 'figs', plot_frequency: Optional[int] = None, spatial_resolution: int = 100, trajectories_per_bit: int = 10):
         self.save_dir = Path(save_dir)
         self.plot_frequency = plot_frequency
         self.spatial_resolution = spatial_resolution
         self.trajectories_per_bit = trajectories_per_bit
-        self.total_epochs = None
+        self.total_epochs: Optional[int] = None
     
-    def _log_or_save_figure(self, fig, name, epoch, simulation_object, dpi=150):
-        aim_callback = next((cb for cb in simulation_object.callbacks 
+    def _log_or_save_figure(self, fig: plt.Figure, name: str, epoch: int, optimizer_object: "ProtocolOptimizer", dpi: int = 150) -> None:
+        aim_callback = next((cb for cb in optimizer_object.callbacks
                             if type(cb).__name__ == 'AimCallback'), None)
         
         if AIM_AVAILABLE and aim_callback and hasattr(aim_callback, 'run') and aim_callback.run:
@@ -234,10 +239,10 @@ class PotentialLandscapePlotCallback(Callback):
             filepath = self.save_dir / f'{name}_epoch_{epoch:04d}.png'
             fig.savefig(filepath, dpi=dpi)
     
-    def on_train_start(self, simulation_object):
-        self.total_epochs = simulation_object.epochs
+    def on_train_start(self, optimizer_object: "ProtocolOptimizer") -> None:
+        self.total_epochs = optimizer_object.epochs
     
-    def on_epoch_end(self, simulation_object, sim_dict, loss_values, epoch):
+    def on_epoch_end(self, optimizer_object: "ProtocolOptimizer", sim_dict: Dict[str, Any], loss_values: torch.Tensor, epoch: int) -> None:
         should_plot = False
         if self.plot_frequency is not None:
             should_plot = (epoch % self.plot_frequency == 0) or (epoch == self.total_epochs - 1)
@@ -249,38 +254,38 @@ class PotentialLandscapePlotCallback(Callback):
         if not should_plot:
             return
         
-        protocol_tensor = sim_dict.get('protocol_tensor', None)
+        protocol_tensor: Optional[ControlSignal] = sim_dict.get('protocol_tensor', None)
         if protocol_tensor is None:
             return
         
-        trajectories = sim_dict['trajectories']
-        spatial_dimensions = simulation_object.spatial_dimensions
-        time_steps = simulation_object.time_steps
-        spatial_bounds = getattr(simulation_object.init_cond_generator, 'mcmc_starting_spatial_bounds', None)
+        microstate_paths: MicrostatePaths = sim_dict['microstate_paths']
+        spatial_dimensions = optimizer_object.spatial_dimensions
+        time_steps = optimizer_object.time_steps
+        spatial_bounds = getattr(optimizer_object.init_cond_generator, 'mcmc_starting_spatial_bounds', None)
         if spatial_bounds is None:
-            min_vals = trajectories[..., 0].min(dim=0)[0].min(dim=1)[0]
-            max_vals = trajectories[..., 0].max(dim=0)[0].max(dim=1)[0]
+            min_vals = microstate_paths[..., 0].min(dim=0)[0].min(dim=1)[0]
+            max_vals = microstate_paths[..., 0].max(dim=0)[0].max(dim=1)[0]
             
             centers = (max_vals + min_vals) / 2
             spans = (max_vals - min_vals)
             
 
-            spans = torch.maximum(spans, torch.tensor(1.0, device=simulation_object.device))
+            spans = torch.maximum(spans, torch.tensor(1.0, device=optimizer_object.device))
 
             x_min_calc = centers - spans
             x_max_calc = centers + spans
             
             spatial_bounds = torch.stack([x_min_calc, x_max_calc], dim=1)
 
-        bit_locations = simulation_object.loss.bit_locations
-        potential_obj = simulation_object.potential
+        bit_locations = optimizer_object.loss.bit_locations
+        potential_obj = optimizer_object.potential
         
         for dim_idx in range(spatial_dimensions):
             x_min, x_max = spatial_bounds[dim_idx, 0].item(), spatial_bounds[dim_idx, 1].item()
-            x_grid = torch.linspace(x_min, x_max, self.spatial_resolution, device=simulation_object.device)
-            t_indices = torch.arange(time_steps, device=simulation_object.device)
+            x_grid = torch.linspace(x_min, x_max, self.spatial_resolution, device=optimizer_object.device)
+            t_indices = torch.arange(time_steps, device=optimizer_object.device)
             
-            query_points = torch.zeros(self.spatial_resolution, spatial_dimensions, device=simulation_object.device)
+            query_points = torch.zeros(self.spatial_resolution, spatial_dimensions, device=optimizer_object.device)
             query_points[:, dim_idx] = x_grid
 
             potential_values = torch.zeros(self.spatial_resolution, time_steps)
@@ -289,10 +294,10 @@ class PotentialLandscapePlotCallback(Callback):
                 potential_values[:, t_idx] = potential_obj.potential_value(query_points, coeff_slice).cpu()
             
             potential_values = potential_values.sign() * ((potential_values.abs() + 1).log10())
-            traj_positions = trajectories[:, dim_idx, :, 0]
+            path_positions = microstate_paths[:, dim_idx, :, 0]
             
-            traj_min = traj_positions.min().item()
-            traj_max = traj_positions.max().item()
+            traj_min = path_positions.min().item()
+            traj_max = path_positions.max().item()
             spatial_buffer = (traj_max - traj_min) * 0.2
             
             mask = (x_grid.cpu() >= (traj_min - spatial_buffer)) & (x_grid.cpu() <= (traj_max + spatial_buffer))
@@ -300,7 +305,7 @@ class PotentialLandscapePlotCallback(Callback):
             
             v_min = torch.quantile(relevant_potential, 0.05).item()
             v_max = torch.quantile(relevant_potential, 0.95).item()
-            start_positions = traj_positions[:, 0]
+            start_positions = path_positions[:, 0]
             bit_locs_dim = bit_locations[:, dim_idx]
             distances = torch.abs(start_positions[:, None] - bit_locs_dim[None, :])
             bit_assignments = distances.argmin(dim=1)
@@ -333,7 +338,7 @@ class PotentialLandscapePlotCallback(Callback):
             
             for idx in sampled_indices:
                 bit_class = bit_assignments[idx].item()
-                traj = traj_positions[idx].cpu().numpy()
+                traj = path_positions[idx].cpu().numpy()
                 time_array = np.linspace(0, time_steps, time_steps + 1)
                 
                 color_idx = bit_class % len(high_contrast_colors)
@@ -341,18 +346,18 @@ class PotentialLandscapePlotCallback(Callback):
                 
                 ax.plot(traj, time_array, color=color, alpha=0.8, linewidth=1.5)
             
-            self._log_or_save_figure(fig, f'potential_landscape_dim_{dim_idx}', epoch, simulation_object)
+            self._log_or_save_figure(fig, f'potential_landscape_dim_{dim_idx}', epoch, optimizer_object)
             plt.close(fig)
 
 class ProtocolPlotCallback(Callback):
     
-    def __init__(self, save_dir='figs', plot_frequency=None):
+    def __init__(self, save_dir: str = 'figs', plot_frequency: Optional[int] = None):
         self.save_dir = Path(save_dir)
         self.plot_frequency = plot_frequency
-        self.total_epochs = None
+        self.total_epochs: Optional[int] = None
     
-    def _log_or_save_figure(self, fig, name, epoch, simulation_object, dpi=150):
-        aim_callback = next((cb for cb in simulation_object.callbacks 
+    def _log_or_save_figure(self, fig: plt.Figure, name: str, epoch: int, optimizer_object: "ProtocolOptimizer", dpi: int = 150) -> None:
+        aim_callback = next((cb for cb in optimizer_object.callbacks
                             if type(cb).__name__ == 'AimCallback'), None)
         
         if AIM_AVAILABLE and aim_callback and hasattr(aim_callback, 'run') and aim_callback.run:
@@ -368,10 +373,10 @@ class ProtocolPlotCallback(Callback):
             filepath = self.save_dir / f'{name}_epoch_{epoch:04d}.png'
             fig.savefig(filepath, dpi=dpi)
     
-    def on_train_start(self, simulation_object):
-        self.total_epochs = simulation_object.epochs
+    def on_train_start(self, optimizer_object: "ProtocolOptimizer") -> None:
+        self.total_epochs = optimizer_object.epochs
     
-    def on_epoch_end(self, simulation_object, sim_dict, loss_values, epoch):
+    def on_epoch_end(self, optimizer_object: "ProtocolOptimizer", sim_dict: Dict[str, Any], loss_values: torch.Tensor, epoch: int) -> None:
         should_plot = False
         if self.plot_frequency is not None:
             should_plot = (epoch % self.plot_frequency == 0) or (epoch == self.total_epochs - 1)
@@ -383,7 +388,7 @@ class ProtocolPlotCallback(Callback):
         if not should_plot:
             return
         
-        protocol_tensor = sim_dict.get('protocol_tensor', None)
+        protocol_tensor: Optional[ControlSignal] = sim_dict.get('protocol_tensor', None)
         if protocol_tensor is None:
             return
         
@@ -413,5 +418,5 @@ class ProtocolPlotCallback(Callback):
             axes[idx].set_visible(False)
         
         plt.tight_layout()
-        self._log_or_save_figure(fig, 'coefficient_evolution', epoch, simulation_object)
+        self._log_or_save_figure(fig, 'coefficient_evolution', epoch, optimizer_object)
         plt.close(fig)
