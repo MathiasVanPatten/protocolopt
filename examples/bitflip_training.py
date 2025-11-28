@@ -1,14 +1,14 @@
 import torch
 import math
-from potential import GeneralCoupledPotential
-from potential_model import LinearPiecewise
-from sim_engine import EulerMaruyama
-from loss_classes import StandardLoss
-from simulation import Simulation
-from initial_condition_generator import ConditionalFlow, LaplaceApproximation
-from plotting_callbacks import TrajectoryPlotCallback, ConfusionMatrixCallback, PotentialLandscapePlotCallback, CoefficientPlotCallback
+from protocolopt.potentials import GeneralCoupledPotential
+from protocolopt.protocols import LinearPiecewise
+from protocolopt.simulators import EulerMaruyama
+from protocolopt.losses import StandardLogicGateLoss
+from protocolopt import Simulation
+from protocolopt.sampling import ConditionalFlow, LaplaceApproximation
+from protocolopt.callbacks import TrajectoryPlotCallback, ConfusionMatrixCallback, PotentialLandscapePlotCallback, ProtocolPlotCallback
 try:
-    from aim_callback import AimCallback
+    from protocolopt.callbacks import AimCallback
     AIM_AVAILABLE = True
 except ImportError:
     AIM_AVAILABLE = False
@@ -61,9 +61,9 @@ endpoints = torch.tensor([
 # Create initial coefficient guess
 initial_coeff_guess = 0.1*torch.randn((2, num_coefficients), device=device)
 
-# Instantiate PotentialModel (LinearPiecewise)
-potential_model = LinearPiecewise(
-    coefficient_count=2,
+# Instantiate Protocol (LinearPiecewise)
+protocol = LinearPiecewise(
+    control_dim=2,
     time_steps=time_steps,
     knot_count=num_coefficients+2,
     initial_coeff_guess=initial_coeff_guess,
@@ -73,8 +73,8 @@ potential_model = LinearPiecewise(
 # Instantiate Potential (GeneralCoupledPotential)
 potential = GeneralCoupledPotential(spatial_dimensions=spatial_dimensions, has_c=False, compile_mode=True)
 
-# Instantiate SimEngine (EulerMaruyama)
-sim_engine = EulerMaruyama(
+# Instantiate Simulator (EulerMaruyama)
+simulator = EulerMaruyama(
     mode='underdamped',
     gamma=gamma,
     mass=mass,
@@ -82,12 +82,12 @@ sim_engine = EulerMaruyama(
     compile_mode=True
 )
 
-# Create loss function (StandardLoss)
+# Create loss function (StandardLogicGateLoss)
 midpoints = torch.tensor([0.0], device=device)
 bit_locations = torch.tensor([[-centers], [centers]], device=device)
 truth_table = {0: ['1'], 1: ['0']}
 
-loss = StandardLoss(
+loss = StandardLogicGateLoss(
     midpoints=midpoints,
     truth_table=truth_table,
     bit_locations=bit_locations,
@@ -146,7 +146,7 @@ potential_landscape_callback = PotentialLandscapePlotCallback(
 )
 callbacks.append(potential_landscape_callback)
 
-coefficient_callback = CoefficientPlotCallback(
+coefficient_callback = ProtocolPlotCallback(
     save_dir='figs',
     plot_frequency=None
 )
@@ -168,9 +168,9 @@ init_cond_generator = LaplaceApproximation(
 # Instantiate Simulation
 simulation = Simulation(
     potential=potential,
-    sim_engine=sim_engine,
+    simulator=simulator,
     loss=loss,
-    potential_model=potential_model,
+    protocol=protocol,
     initial_condition_generator=init_cond_generator,
     params=params,
     callbacks=callbacks

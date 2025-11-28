@@ -1,108 +1,55 @@
-#no not the comic
-
+from ..core.loss import Loss, TruthTableError
+from .functional import variance_loss, work_loss, temporal_smoothness_penalty
+from typing import Dict, Optional, Union, List
 import torch
-from abc import ABC, abstractmethod
-from loss_methods import variance_loss, work_loss, temporal_smoothness_penalty
-from torch.func import vmap
 
-class TruthTableError(Exception):
-    def __init__(self, message, path=''):
-        self.path = path
-        super().__init__(f"{message} at branch '{path}'")
+class LogicGateEndpointLossBase(Loss):
+    """Base class for losses that depend on the final state of the trajectory relative to target bits."""
 
-class Loss(ABC):
-    @abstractmethod
-    def loss(self, potential_tensor, trajectory_tensor, coeff_grid, dt):
-        #potential_tensor is a tensor of shape (num_samples, spatial_dimensions, time_steps+1)
-        #trajectory_tensor is a tensor of shape (num_samples, spatial_dimensions, time_steps+1, 2 (position and velocity))
-        #you are expected to compute the loss for each sample in the batch such that the graph is not broken, return only the value of the loss for each sample
-        pass
+    def __init__(self, midpoints: torch.Tensor, truth_table: Dict[int, Union[List[str], Dict]], bit_locations: torch.Tensor, exponent: int = 2, starting_bit_weights: Optional[torch.Tensor] = None):
+        """Initializes the LogicGateEndpointLossBase.
 
-    def _compute_direct_grad(self, loss_values):
-        loss_values.mean(axis = -1).backward()
-        pass
+        Args:
+            midpoints: Midpoints defining bit boundaries in each spatial dimension. Currently only
+                supports binary mapping. Should be a vector of midpoints for each spatial dimension.
+            truth_table: Dictionary defining valid transitions. It should be nested with one input bit
+                at a time as the keys with the innermost level showing the acceptable outputs (as a list
+                of bit strings) for that bit configuration. You must fully define the input/output space
+                in a 1-Many or 1-1 enforced configuration.
+            bit_locations: Target locations for each bit configuration. It is assumed that index 0 is
+                the location of 0b0, index 1 is the location of 0b1, etc. To the left of the midpoint
+                is 0 and the right is 1. Exactly on the midpoint maps to 0.
+            exponent: Exponent for the distance metric (p-norm).
+            starting_bit_weights: Optional tensor of weights for each starting state (int representation).
+                Shape should match domain size.
 
-    def _compute_malliavin_grad(self, loss_values, malliavian_weights):
-        #malliavian_weights are (num_samples, coeff_count, time_steps)
-        return (loss_values[:,None, None] * malliavian_weights).mean(axis = 0)
+        Examples:
+            NAND with 2 bits with the rightmost bit being used as the output:
 
-    def compute_FRR_gradient(self, potential_obj, potential_tensor, trajectory_tensor, malliavian_weights, coeff_grid, dt):
-        pos_tensor_detached = trajectory_tensor[..., 0].detach()
-        # recompute to freeze the secondary reliance on the protocol through the trajectories
-        # we want dLoss/da where loss is given a trajectory and the mall weights carry the probability of the trajectory
-        def potential_at_t(pos_t, coeff_t):
-            return potential_obj.potential_value(pos_t, coeff_t)
-
-        # in dims: (2,1) -> for arg 0 pos iterate over dim 2 time, for arg 1 coeff iterate over dim 1 which is time
-        # outdims: 1, put time at the end
-        batched_time_potential = vmap(potential_at_t, in_dims=(2, 1), out_dims=1)      
-
-        clean_potential_tensor = batched_time_potential(pos_tensor_detached[...,:-1], coeff_grid)
-
-        loss_values_direct = self.loss(
-            clean_potential_tensor, 
-            trajectory_tensor.detach(), # detach to avoid double counting through the stochastic correction loss
-            coeff_grid, 
-            dt
-        )
-
-        direct_grad_scalar = loss_values_direct.mean()
-        
-        # direct loss for backwards, detach to avoid double counting through the stochastic correction loss
-        with torch.no_grad():
-            loss_values_for_scoring = self.loss(
-                potential_tensor,
-                trajectory_tensor, 
-                coeff_grid, 
-                dt
-            )
-
-        # Make sure the eventual backwards goes back through to the coeff grid and trainable params only
-        # Sum over (Coeffs, Time)
-        frr_term = (malliavian_weights.detach() * coeff_grid).sum(dim=(-2, -1))
-        surrogate_grad_scalar = (loss_values_for_scoring * frr_term).mean()
-        
-        return direct_grad_scalar + surrogate_grad_scalar, loss_values_for_scoring
-
-
-class EndpointLossBase(Loss):
-    #all losses that need to hold state to evaluate the ending positions should inherit from this class
-    def __init__(self, midpoints, truth_table, bit_locations, exponent = 2, starting_bit_weights=None): 
-        #midpoints only supports binary mapping currently, it should be a vector of midpoints for each spatial dimension
-        #bit_locations is the ideal location of each bit for each spatial dimension, it's assumed that index 0 is the location of 0b0, index 1 is the location of 0b1, etc.
-        #to the left of which is 0 and the right of which is 1. Exactly the mapping midpoint will be a 0
-        #truth_table is a dict with the general form of the key being the input and the value being the expected output, it should be nested
-        #with one input bit at a time as the keys with the innermost level showing the acceptable outputs for that bit configuration.
-        #you must have a list of values, even if you only have one element
-        #you must fully define the input/output space in a 1-Many or 1-1 enforced configuration
-        #starting_bit_weights: optional tensor of weights for each starting state (int representation). Shape should match domain size.
-
-        #Example for NAND with 2 bits with the rightmost bit being used as the output:
-        '''
             {
-                0:{
+                0: {
                     0: ['01', '11'],
                     1: ['01', '11']
-                    }
-                1:{
+                },
+                1: {
                     0: ['01', '11'],
                     1: ['00', '10']
                 }
             }
-        '''
-        #example for NAND where only 11 is used as 1
-        '''
+
+            NAND where only 11 is used as 1:
+
             {
-                0:{
+                0: {
                     0: ['11'],
                     1: ['11']
-                    }
-                1:{
+                },
+                1: {
                     0: ['11'],
                     1: ['00', '10', '01']
                 }
             }
-        '''
+        """
         
         self.midpoints = midpoints
         self.bit_locations = bit_locations
@@ -112,8 +59,6 @@ class EndpointLossBase(Loss):
         self.domain = 2**self._get_depth_of_truth_table(truth_table)
         self.flattened_truth_table = {k : None for k in range(self.domain)}
         self._flatten_truth_table(truth_table)
-        print(self.flattened_truth_table)
-        # self._validate_flattened_truth_table()
         self._gen_validity_mapping()
 
     def _get_depth_of_truth_table(self, truth_table_dict):
@@ -149,8 +94,6 @@ class EndpointLossBase(Loss):
             
         return min_distances
 
-    # def loss(self, potential_tensor, trajectory_tensor):
-    #     return self._endpoint_loss(trajectory_tensor)
 
     def _gen_validity_mapping(self):
         self.validity = torch.zeros(self.domain, self.domain, dtype = torch.bool, device = self.bit_locations.device)
@@ -213,21 +156,36 @@ class EndpointLossBase(Loss):
                     raise TruthTableError(f"Missing output for {bit}", current_bit_sequence + str(bit))
                 self.flattened_truth_table[int(current_bit_sequence + str(bit), base = 2)] = list_to_add
 
-class StandardLoss(EndpointLossBase):
+class StandardLogicGateLoss(LogicGateEndpointLossBase):
+    """Standard loss function combining logic gate endpoint error, work, variance, and smoothness."""
+
     def __init__(self, midpoints, truth_table, bit_locations, endpoint_weight = 1, work_weight = 1, var_weight = 1, smoothness_weight = 1, exponent = 2, starting_bit_weights=None):
+        """Initializes StandardLogicGateLoss.
+
+        Args:
+            midpoints: Bit boundaries.
+            truth_table: Valid transitions.
+            bit_locations: Target locations.
+            endpoint_weight: Weight for endpoint loss.
+            work_weight: Weight for work loss.
+            var_weight: Weight for variance loss.
+            smoothness_weight: Weight for smoothness penalty.
+            exponent: Exponent for distance.
+            starting_bit_weights: Weights for starting bits.
+        """
         super().__init__(midpoints, truth_table, bit_locations, exponent, starting_bit_weights)
         self.endpoint_weight = endpoint_weight
         self.work_weight = work_weight
         self.var_weight = var_weight
         self.smoothness_weight = smoothness_weight
 
-    def loss(self, potential_tensor, trajectory_tensor, coeff_grid, dt):
-
+    def loss(self, potential_tensor: torch.Tensor, trajectory_tensor: torch.Tensor, protocol_tensor: torch.Tensor, dt: float) -> torch.Tensor:
+        """Computes the combined loss."""
         starting_bits_int = self._compute_starting_bits_int(trajectory_tensor)
         endpoint_loss = self._endpoint_loss(trajectory_tensor)
         work_loss_value = work_loss(potential_tensor)
         var_loss_value = variance_loss(trajectory_tensor, starting_bits_int, self.domain)
-        smoothness_loss_value = temporal_smoothness_penalty(coeff_grid, dt)
+        smoothness_loss_value = temporal_smoothness_penalty(protocol_tensor, dt)
         return (
             self.endpoint_weight * endpoint_loss
             + self.work_weight * work_loss_value
@@ -235,7 +193,7 @@ class StandardLoss(EndpointLossBase):
             + self.smoothness_weight * smoothness_loss_value
         )
     
-    def compute_loss_components(self, potential_tensor, trajectory_tensor, coeff_grid, dt):
+    def compute_loss_components(self, potential_tensor, trajectory_tensor, protocol_tensor, dt):
         """
         Compute individual loss components for logging/analysis.
         
@@ -250,7 +208,7 @@ class StandardLoss(EndpointLossBase):
         endpoint_loss_val = self._endpoint_loss(trajectory_tensor)
         work_loss_val = work_loss(potential_tensor)
         var_loss_val = variance_loss(trajectory_tensor, starting_bits_int, self.domain)
-        smoothness_loss_val = temporal_smoothness_penalty(coeff_grid, dt)
+        smoothness_loss_val = temporal_smoothness_penalty(protocol_tensor, dt)
         
         return {
             'endpoint_loss': endpoint_loss_val,
@@ -258,49 +216,3 @@ class StandardLoss(EndpointLossBase):
             'variance_loss': var_loss_val,
             'smoothness_loss': smoothness_loss_val
         }
-
-if __name__ == '__main__':
-    good_truth_table = {
-        0: {
-            0: ['01', '11'],
-            1: ['01', '11']
-        },
-        1: {
-            0: ['01', '11'],
-            1: ['00', '10']
-        }
-    }
-
-    bad_truth_table = {
-        0: {
-            0: ['01'],
-            1: ['01']
-        },
-        1: {
-            0: ['01'],
-            1: ['00']
-        }
-    }
-
-    test = StandardLoss(
-        midpoints=torch.tensor([0, 0]),
-        bit_locations=torch.tensor([
-            [-0.5, -0.5],
-            [-0.5,  0.5],
-            [ 0.5, -0.5],
-            [ 0.5,  0.5]
-        ]),
-        truth_table=good_truth_table
-    )
-
-    test.loss(
-        torch.randn(10, 10),
-        torch.randn(10, 2, 10, 2)
-    )
-
-
-    # test = EndpointLossBase(midpoints = [0.5], truth_table = bad_truth_table)
-
-
-
-

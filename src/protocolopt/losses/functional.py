@@ -19,6 +19,6 @@ def variance_loss(trajectory_tensor, starting_bits_int, domain_size, phase_dimen
                   ).mean(dim=(1, 2)) #compute the variance using cohort mean over space and time then mean each trajectories var over space and time
     return var_loss
 
-def temporal_smoothness_penalty(coeff_grid, dt):
-    dcoeff_dt = (coeff_grid[:, 1:] - coeff_grid[:, :-1]) / dt
+def temporal_smoothness_penalty(protocol_tensor, dt):
+    dcoeff_dt = (protocol_tensor[:, 1:] - protocol_tensor[:, :-1]) / dt
     return (dcoeff_dt ** 2).mean()
