@@ -2,7 +2,6 @@ from ..core.sampling import InitialConditionGenerator
 from ..core.potential import Potential
 from ..core.protocol import Protocol
 from ..core.loss import Loss
-from ..core.types import StateSpace
 import torch
 import math
 from torch.func import vmap, hessian
@@ -59,7 +58,7 @@ class LaplaceApproximation(InitialConditionGenerator):
         self.log_weights = -potential_kernel(self.centers) - 0.5 * logabsdet
         self.hessian_at_centers = hessian_at_centers
 
-    def _get_initial_velocities(self) -> StateSpace:
+    def _get_initial_velocities(self) -> torch.Tensor:
         """Generates initial velocities."""
         # P(v) = exp(-beta * E_k)
         # E_k = 1/2 * m * v^2
@@ -79,7 +78,7 @@ class LaplaceApproximation(InitialConditionGenerator):
         samples = torch.randn(self.num_samples, self.spatial_dimensions, self.time_steps, device=self.device) * self.noise_sigma * math.sqrt(self.dt)
         return samples
 
-    def _get_initial_positions(self) -> StateSpace:
+    def _get_initial_positions(self) -> torch.Tensor:
         """Generates initial positions based on Laplace approximation."""
         with torch.no_grad():
             chosen_centers = dist.Categorical(self.log_weights).sample((self.num_samples,))
@@ -91,7 +90,7 @@ class LaplaceApproximation(InitialConditionGenerator):
             samples = dist.MultivariateNormal(center_locs, precision_matrix = chosen_H).sample()
             return samples
 
-    def generate_initial_conditions(self, potential: Potential, protocol: Protocol, loss: Loss) -> Tuple[StateSpace, StateSpace, torch.Tensor]:
+    def generate_initial_conditions(self, potential: Potential, protocol: Protocol, loss: Loss) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Generates initial conditions.
 
         Args:

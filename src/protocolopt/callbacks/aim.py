@@ -6,17 +6,14 @@ except ImportError:
     print("Warning: Aim not installed. Install with 'pip install aim' to use AimCallback")
 
 from ..core.callback import Callback
-from typing import Optional, Dict, Any, TYPE_CHECKING
 import torch
 
-if TYPE_CHECKING:
-    from ..core.simulation import Simulation
 
 class AimCallback(Callback):
     """Callback for experiment tracking with Aim"""
     
-    def __init__(self, experiment_name: Optional[str] = None, repo_path: Optional[str] = None, log_system_params: bool = True,
-                 capture_terminal_logs: bool = False, run_hash: Optional[str] = None):
+    def __init__(self, experiment_name=None, repo_path=None, log_system_params=True, 
+                 capture_terminal_logs=False, run_hash=None):
         """
         Args:
             experiment_name: Name for the experiment
@@ -35,7 +32,7 @@ class AimCallback(Callback):
         self.run_hash = run_hash
         self.run = None
     
-    def on_train_start(self, simulation_object: "Simulation") -> None:
+    def on_train_start(self, simulation_object):
         """Initialize Aim Run and log hyperparameters"""
         # Initialize Aim run
         self.run = Run(
@@ -104,7 +101,7 @@ class AimCallback(Callback):
         self.run['hparams']['potential_type'] = type(simulation_object.potential).__name__
         self.run['hparams']['simulator_type'] = type(simulation_object.simulator).__name__
     
-    def on_epoch_end(self, simulation_object: "Simulation", sim_dict: Dict[str, Any], loss_values: torch.Tensor, epoch: int) -> None:
+    def on_epoch_end(self, simulation_object, sim_dict, loss_values, epoch):
         """Log metrics for each epoch"""
         if self.run is None:
             return
@@ -155,7 +152,7 @@ class AimCallback(Callback):
         average_work = work_per_trajectory.mean().item()
         self.run.track(average_work, name='metrics/average_work', epoch=epoch)
     
-    def on_train_end(self, simulation_object: "Simulation", sim_dict: Dict[str, Any], protocol_tensor: torch.Tensor, epoch: int) -> None:
+    def on_train_end(self, simulation_object, sim_dict, protocol_tensor, epoch):
         """Finalize and close Aim run"""
         if self.run is None:
             return

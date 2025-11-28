@@ -19,7 +19,6 @@ class SimulationConfig:
         samples_per_well: Number of samples to draw per well (for MCMC).
         mcmc_warmup_ratio: Ratio of warmup steps for MCMC.
         mcmc_starting_spatial_bounds: Spatial bounds for starting positions.
-                                      Shape: (Spatial_Dim, 2)
         mcmc_chains_per_well: Number of MCMC chains per well.
         min_neff: Minimum effective sample size for MCMC.
         mcmc_num_samples: Total number of MCMC samples (if not per well).

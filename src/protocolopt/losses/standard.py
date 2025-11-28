@@ -1,7 +1,6 @@
 from ..core.loss import Loss, TruthTableError
-from ..core.types import PotentialTensor, Trajectories, ControlSignal
 from .functional import variance_loss, work_loss, temporal_smoothness_penalty
-from typing import Dict, Optional, Union, List, Any
+from typing import Dict, Optional, Union, List
 import torch
 
 class LogicGateEndpointLossBase(Loss):
@@ -13,7 +12,6 @@ class LogicGateEndpointLossBase(Loss):
         Args:
             midpoints: Midpoints defining bit boundaries in each spatial dimension. Currently only
                 supports binary mapping. Should be a vector of midpoints for each spatial dimension.
-                Shape: (Spatial_Dim,)
             truth_table: Dictionary defining valid transitions. It should be nested with one input bit
                 at a time as the keys with the innermost level showing the acceptable outputs (as a list
                 of bit strings) for that bit configuration. You must fully define the input/output space
@@ -21,11 +19,9 @@ class LogicGateEndpointLossBase(Loss):
             bit_locations: Target locations for each bit configuration. It is assumed that index 0 is
                 the location of 0b0, index 1 is the location of 0b1, etc. To the left of the midpoint
                 is 0 and the right is 1. Exactly on the midpoint maps to 0.
-                Shape: (Domain_Size, Spatial_Dim)
             exponent: Exponent for the distance metric (p-norm).
             starting_bit_weights: Optional tensor of weights for each starting state (int representation).
                 Shape should match domain size.
-                Shape: (Domain_Size,)
 
         Examples:
             NAND with 2 bits with the rightmost bit being used as the output:
@@ -71,17 +67,17 @@ class LogicGateEndpointLossBase(Loss):
         else:
             return 1 + self._get_depth_of_truth_table(truth_table_dict[0])
 
-    def _compute_starting_bits_int(self, trajectory_tensor: Trajectories) -> torch.Tensor:
+    def _compute_starting_bits_int(self, trajectory_tensor):
         starting_bits = trajectory_tensor[:,:,0,0] > self.midpoints[None,:]
         starting_bits_int = torch.sum(starting_bits.int() * torch.tensor(list(reversed([2**x for x in range(self.midpoints.shape[0])])), device = trajectory_tensor.device)[None, :], axis = -1)
         return starting_bits_int
     
-    def _compute_ending_bits_int(self, trajectory_tensor: Trajectories) -> torch.Tensor:
+    def _compute_ending_bits_int(self, trajectory_tensor):
         ending_bits = trajectory_tensor[:,:,-1,0] > self.midpoints[None,:]
         ending_bits_int = torch.sum(ending_bits.int() * torch.tensor(list(reversed([2**x for x in range(self.midpoints.shape[0])])), device = trajectory_tensor.device)[None, :], axis = -1)
         return ending_bits_int
 
-    def _endpoint_loss(self, trajectory_tensor: Trajectories) -> torch.Tensor:
+    def _endpoint_loss(self, trajectory_tensor):
         starting_bits_int = self._compute_starting_bits_int(trajectory_tensor)
         ending_positions = trajectory_tensor[:,:,-1,0]
         distances = torch.norm(ending_positions[:,None,:] - self.bit_locations[None,:,:], dim = -1, p = self.exponent)
@@ -104,13 +100,12 @@ class LogicGateEndpointLossBase(Loss):
         for inputstate, outputstate in self.flattened_truth_table.items():
             self.validity[inputstate, outputstate] = True
     
-    def compute_binary_trajectory_info(self, trajectory_tensor: Trajectories) -> Dict[str, torch.Tensor]:
+    def compute_binary_trajectory_info(self, trajectory_tensor):
         """
         Compute starting and ending binary states for trajectories.
         
         Args:
-            trajectory_tensor: Trajectory tensor.
-                               Shape: (Batch, Spatial_Dim, Time_Steps+1, 2)
+            trajectory_tensor: Trajectory tensor of shape (num_samples, spatial_dimensions, time_steps+1, 2)
         
         Returns:
             Dictionary with 'starting_bits_int' and 'ending_bits_int' tensors
@@ -120,13 +115,12 @@ class LogicGateEndpointLossBase(Loss):
             'ending_bits_int': self._compute_ending_bits_int(trajectory_tensor)
         }
     
-    def compute_binary_error_rate(self, trajectory_tensor: Trajectories) -> float:
+    def compute_binary_error_rate(self, trajectory_tensor):
         """
         Compute the percentage of trajectories ending in invalid states.
         
         Args:
             trajectory_tensor: Trajectory tensor (should be detached)
-                               Shape: (Batch, Spatial_Dim, Time_Steps+1, 2)
             
         Returns:
             Float representing the error rate (0.0 to 1.0)
@@ -165,7 +159,7 @@ class LogicGateEndpointLossBase(Loss):
 class StandardLogicGateLoss(LogicGateEndpointLossBase):
     """Standard loss function combining logic gate endpoint error, work, variance, and smoothness."""
 
-    def __init__(self, midpoints: torch.Tensor, truth_table: Dict[int, Union[List[str], Dict]], bit_locations: torch.Tensor, endpoint_weight: float = 1, work_weight: float = 1, var_weight: float = 1, smoothness_weight: float = 1, exponent: int = 2, starting_bit_weights: Optional[torch.Tensor] = None):
+    def __init__(self, midpoints, truth_table, bit_locations, endpoint_weight = 1, work_weight = 1, var_weight = 1, smoothness_weight = 1, exponent = 2, starting_bit_weights=None):
         """Initializes StandardLogicGateLoss.
 
         Args:
@@ -185,18 +179,8 @@ class StandardLogicGateLoss(LogicGateEndpointLossBase):
         self.var_weight = var_weight
         self.smoothness_weight = smoothness_weight
 
-    def loss(self, potential_tensor: PotentialTensor, trajectory_tensor: Trajectories, protocol_tensor: ControlSignal, dt: float) -> torch.Tensor:
-        """Computes the combined loss.
-
-        Args:
-            potential_tensor: Potential energy values. Shape: (Batch, Time_Steps)
-            trajectory_tensor: Trajectory data. Shape: (Batch, Spatial_Dim, Time_Steps+1, 2)
-            protocol_tensor: Control signals. Shape: (Control_Dim, Time_Steps)
-            dt: Time step size.
-
-        Returns:
-            Loss value. Shape: (Batch,)
-        """
+    def loss(self, potential_tensor: torch.Tensor, trajectory_tensor: torch.Tensor, protocol_tensor: torch.Tensor, dt: float) -> torch.Tensor:
+        """Computes the combined loss."""
         starting_bits_int = self._compute_starting_bits_int(trajectory_tensor)
         endpoint_loss = self._endpoint_loss(trajectory_tensor)
         work_loss_value = work_loss(potential_tensor)
@@ -209,15 +193,13 @@ class StandardLogicGateLoss(LogicGateEndpointLossBase):
             + self.smoothness_weight * smoothness_loss_value
         )
     
-    def compute_loss_components(self, potential_tensor: PotentialTensor, trajectory_tensor: Trajectories, protocol_tensor: ControlSignal, dt: float) -> Dict[str, torch.Tensor]:
+    def compute_loss_components(self, potential_tensor, trajectory_tensor, protocol_tensor, dt):
         """
         Compute individual loss components for logging/analysis.
         
         Args:
             potential_tensor: Detached potential tensor
             trajectory_tensor: Detached trajectory tensor
-            protocol_tensor: Protocol tensor
-            dt: Time step
             
         Returns:
             Dictionary with loss component values (already detached from input)

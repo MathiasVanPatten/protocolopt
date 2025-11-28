@@ -1,5 +1,4 @@
 from ..core.potential import Potential
-from ..core.types import StateSpace, Coefficients
 from typing import Tuple, Optional
 import torch
 
@@ -28,14 +27,12 @@ class GeneralCoupledPotential(Potential):
 
         self.triu_indices = torch.triu_indices(row=spatial_dimensions, col=spatial_dimensions, offset=1)
 
-    def potential_value(self, space_grid: StateSpace, protocol_tensor: Coefficients) -> torch.Tensor:
+    def potential_value(self, space_grid: torch.Tensor, protocol_tensor: torch.Tensor) -> torch.Tensor:
         """Computes the coupled potential value.
 
         Args:
-            space_grid: Spatial coordinates.
-                        Shape: (Batch, N) or (N,)
+            space_grid: Spatial coordinates. Shape: (Batch, N) or (N,).
             protocol_tensor: Coefficients vector. Layout: [N Quartics, N Quadratics, N Linears (optional), K Interactions (optional)].
-                             Shape: (Total_Coeffs,)
 
         Returns:
             Potential value. Shape: (Batch,) or scalar.

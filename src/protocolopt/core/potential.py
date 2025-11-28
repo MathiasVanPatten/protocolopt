@@ -4,7 +4,6 @@ import sys
 from torch.func import vmap, grad, jacrev
 from abc import ABC, abstractmethod
 from ..utils import robust_compile
-from .types import StateSpace, Coefficients, ControlSignal
 
 class Potential(ABC):
     """Abstract base class for potential energy landscapes."""
@@ -18,14 +17,12 @@ class Potential(ABC):
         self.compile_mode = compile_mode
 
     @abstractmethod
-    def potential_value(self, space_grid: StateSpace, protocol_tensor: Coefficients) -> torch.Tensor:
+    def potential_value(self, space_grid: torch.Tensor, protocol_tensor: torch.Tensor) -> torch.Tensor:
         """Computes the potential energy value.
 
         Args:
-            space_grid: The spatial coordinates.
-                        Shape: (Batch, Spatial_Dim) or (Spatial_Dim,)
-            protocol_tensor: The coefficients for the potential.
-                             Shape: (Control_Dim,)
+            space_grid: The spatial coordinates. Shape: (Batch, Spatial_Dim) or (Spatial_Dim,).
+            protocol_tensor: The coefficients for the potential. Shape: (Control_Dim,).
 
         Returns:
             The potential energy at each point. Shape: (Batch,) or scalar.
@@ -46,51 +43,18 @@ class Potential(ABC):
 
         return self._dv_dx_batched, self._dv_dxda_batched
 
-    def get_potential_value(self, space_grid: StateSpace, protocol_tensor: ControlSignal, time_index: int) -> torch.Tensor:
-        """Helper to get potential value at a specific time index.
-
-        Args:
-            space_grid: The spatial coordinates.
-                        Shape: (Batch, Spatial_Dim)
-            protocol_tensor: The full protocol control signal.
-                             Shape: (Control_Dim, Time_Steps)
-            time_index: The specific time index to evaluate at.
-
-        Returns:
-            The potential energy. Shape: (Batch,)
-        """
+    def get_potential_value(self, space_grid: torch.Tensor, protocol_tensor: torch.Tensor, time_index: int) -> torch.Tensor:
+        """Helper to get potential value at a specific time index."""
         return self.potential_value(space_grid, protocol_tensor[:, time_index])
 
-    def dv_dx(self, space_grid: StateSpace, protocol_tensor: ControlSignal, time_index: int) -> torch.Tensor:
-        """Computes the gradient of the potential with respect to spatial coordinates.
-
-        Args:
-            space_grid: The spatial coordinates.
-                        Shape: (Batch, Spatial_Dim)
-            protocol_tensor: The full protocol control signal.
-                             Shape: (Control_Dim, Time_Steps)
-            time_index: The specific time index.
-
-        Returns:
-            Gradient dV/dx. Shape: (Batch, Spatial_Dim)
-        """
+    def dv_dx(self, space_grid: torch.Tensor, protocol_tensor: torch.Tensor, time_index: int) -> torch.Tensor:
+        """Computes the gradient of the potential with respect to spatial coordinates."""
         coeff = protocol_tensor[:, time_index]
         batch_dvdx_func, _ = self._get_kernels()
         return batch_dvdx_func(space_grid, coeff)
 
-    def dv_dxda(self, space_grid: StateSpace, protocol_tensor: ControlSignal, time_index: int) -> torch.Tensor:
-        """Computes the sensitivity of the gradient with respect to coefficients.
-
-        Args:
-            space_grid: The spatial coordinates.
-                        Shape: (Batch, Spatial_Dim)
-            protocol_tensor: The full protocol control signal.
-                             Shape: (Control_Dim, Time_Steps)
-            time_index: The specific time index.
-
-        Returns:
-            Mixed derivative d(dV/dx)/da. Shape: (Batch, Spatial_Dim, Control_Dim)
-        """
+    def dv_dxda(self, space_grid: torch.Tensor, protocol_tensor: torch.Tensor, time_index: int) -> torch.Tensor:
+        """Computes the sensitivity of the gradient with respect to coefficients."""
         coeff = protocol_tensor[:, time_index]
         _, batch_dvdxda_func = self._get_kernels()
         return batch_dvdxda_func(space_grid, coeff)

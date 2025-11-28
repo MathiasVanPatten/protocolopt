@@ -1,5 +1,4 @@
 from ..core.protocol import Protocol
-from ..core.types import ControlSignal
 import torch
 import torch.nn.functional as F
 from typing import Optional, List
@@ -15,9 +14,7 @@ class LinearPiecewise(Protocol):
             time_steps: Number of time steps for interpolation.
             knot_count: Total number of knots (including endpoints).
             initial_coeff_guess: Initial guess for the trainable knots.
-                                 Shape: (Control_Dim, Knot_Count) or (Control_Dim, Knot_Count - 2)
-            endpoints: Fixed values for the start and end knots.
-                       Shape: (Control_Dim, 2).
+            endpoints: Fixed values for the start and end knots. Shape: (Coeffs, 2).
 
         Raises:
             ValueError: If initial guess shape is inconsistent with knot count.
@@ -46,11 +43,11 @@ class LinearPiecewise(Protocol):
         else:
             return self.trainable_params
         
-    def get_protocol_tensor(self) -> ControlSignal:
+    def get_protocol_tensor(self) -> torch.Tensor:
         """Interpolates knots to get the full coefficient grid.
 
         Returns:
-            Coefficient grid. Shape: (Control_Dim, Time_Steps).
+            Coefficient grid. Shape: (Coeffs, Time_Steps).
         """
         knots = self._get_knots()
         protocol_tensor = F.interpolate(knots.unsqueeze(0), size=self.time_steps, mode='linear', align_corners=True)

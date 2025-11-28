@@ -1,11 +1,7 @@
 import torch
 from abc import ABC, abstractmethod
-from typing import Tuple, Dict, Any, TYPE_CHECKING
+from typing import Tuple, Dict, Any
 from torch.func import vmap
-from .types import PotentialTensor, Trajectories, ControlSignal, MalliavinWeight
-
-if TYPE_CHECKING:
-    from .potential import Potential
 
 class TruthTableError(Exception):
     def __init__(self, message, path=''):
@@ -16,16 +12,13 @@ class Loss(ABC):
     """Abstract base class for loss functions."""
 
     @abstractmethod
-    def loss(self, potential_tensor: PotentialTensor, trajectory_tensor: Trajectories, protocol_tensor: ControlSignal, dt: float) -> torch.Tensor:
+    def loss(self, potential_tensor: torch.Tensor, trajectory_tensor: torch.Tensor, protocol_tensor: torch.Tensor, dt: float) -> torch.Tensor:
         """Computes the loss for a batch of trajectories.
 
         Args:
-            potential_tensor: Potential values along trajectories.
-                              Shape: (Batch, Time_Steps) or (Batch, Time_Steps+1)
-            trajectory_tensor: Trajectory data.
-                               Shape: (Batch, Spatial_Dim, Time_Steps+1, 2)
-            protocol_tensor: Control signals from the protocol.
-                             Shape: (Control_Dim, Time_Steps)
+            potential_tensor: Potential values along trajectories. Shape: (Batch, Time_Steps+1).
+            trajectory_tensor: Trajectory data. Shape: (Batch, Spatial_Dim, Time_Steps+1, 2).
+            protocol_tensor: Control signals from the protocol. Shape: (Control_Dim, Time_Steps).
             dt: Time step size.
 
         Returns:
@@ -33,21 +26,21 @@ class Loss(ABC):
         """
         pass
 
-    def _compute_direct_grad(self, loss_values: torch.Tensor):
+    def _compute_direct_grad(self, loss_values):
         loss_values.mean(axis = -1).backward()
         pass
 
-    def _compute_malliavin_grad(self, loss_values: torch.Tensor, malliavian_weights: MalliavinWeight) -> torch.Tensor:
+    def _compute_malliavin_grad(self, loss_values, malliavian_weights):
         #malliavian_weights are (num_samples, coeff_count, time_steps)
         return (loss_values[:,None, None] * malliavian_weights).mean(axis = 0)
 
     def compute_FRR_gradient(
         self,
-        potential_obj: "Potential",
-        potential_tensor: PotentialTensor,
-        trajectory_tensor: Trajectories,
-        malliavian_weights: MalliavinWeight,
-        protocol_tensor: ControlSignal,
+        potential_obj: Any,
+        potential_tensor: torch.Tensor,
+        trajectory_tensor: torch.Tensor,
+        malliavian_weights: torch.Tensor,
+        protocol_tensor: torch.Tensor,
         dt: float
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Computes the gradient using the Fluctuation Response Relation (FRR).
