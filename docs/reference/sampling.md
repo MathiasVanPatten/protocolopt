@@ -1,0 +1,4 @@
+# Sampling
+
+::: protocolopt.sampling
+
