@@ -2,7 +2,7 @@
 import torch
 from tqdm import tqdm
 from typing import Dict, Any, List, Optional, Union
-from .config import SimulationConfig
+from .config import ProtocolOptimizerConfig
 from ..utils import logger
 from .potential import Potential
 from .simulator import Simulator
@@ -21,7 +21,7 @@ class ProtocolOptimizer:
         loss: Loss,
         protocol: Protocol,
         initial_condition_generator: InitialConditionGenerator,
-        params: Union[SimulationConfig, Dict[str, Any]],
+        params: Union[ProtocolOptimizerConfig, Dict[str, Any]],
         callbacks: List[Callback] = []
     ) -> None:
         """Initializes the ProtocolOptimizer.
@@ -32,7 +32,7 @@ class ProtocolOptimizer:
             loss: The loss function to minimize.
             protocol: The time-dependent protocol model.
             initial_condition_generator: Generator for starting states.
-            params: Configuration parameters. Can be a dict or SimulationConfig object.
+            params: Configuration parameters. Can be a dict or ProtocolOptimizerConfig object.
             callbacks: List of callbacks to run during training.
         """
         self.potential = potential
@@ -44,7 +44,7 @@ class ProtocolOptimizer:
         self.callbacks = callbacks
 
         if isinstance(params, dict):
-            self.config = SimulationConfig.from_dict(params)
+            self.config = ProtocolOptimizerConfig.from_dict(params)
         else:
             self.config = params
 
