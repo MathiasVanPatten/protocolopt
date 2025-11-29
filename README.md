@@ -1,49 +1,22 @@
-# Roadmap
-Not binding, the further out the less binding as I find issues through the process.
+# ProtocolOpt
 
-## MVPs
-- [x] MVP Bitflip Training, showing the ability to replicate the basic operation on 1 bit
-- [X] First QoL and Cleanup
-    - [X] Add callbacks to the simulation class
-    - [X] Change plotting to be number of spatial dimensions agnostic and moved into callbacks
-    - [X] Add ability to constrain MCMC chains to specific bits of the potential to guaruntee a good starting state
-    - [X] Switch Experiment Tracking to Aim
-- [X] MVP Bit Erasure, showing the ability to replicate the basic operation on 1 bit
-- [X] Get code ready for first feedback from others
-    - [X] move detachment out of callbacks
-    - [X] add ability to change mass
-    - [~] add overdamped mode to euler mayurama sim engine (added but numerical issues currently)
-    - [X] add visualizations of the potential in time
-    - [X] add visualizations of the coeff grid in time
-- [ ] Replication Revisit
-    - [ ] Ensure the work is as expected compared to original code for bitflip and erasure
-        - [ ] Bitflip
-        - [ ] Bit Erasure
-    - [ ] ensure the shape of the potential in time is as expected compared to original code for bitflip and erasure
-        - [ ] Bitflip
-        - [ ] Bit Erasure
-- [ ] implement grad norm with the changes to the loss api as needed https://arxiv.org/abs/1711.02257
-- [ ] add schedulers 
-- [ ] Second QoL and Cleanup
-    - [ ] Generalize training script, moving the more basic training tasks into a yaml-led process
-    - [ ] Do an api pass, making sure everything makes sense and is as easy as possible with error checking to make sure the user is doing the right thing within reason
-    - [ ] Optimization pass
-    - [ ] Do a documentation pass, docstrings, typehints, comments, etc.
-    - [ ] Add ability to save and load model
-    - [ ] Add ability to generate, simulate, and plot a generated ensemble given the bits you want to infer on to make it easy to examine a trained model
-    - [ ] more elegent error handling for user code to better communicate where and what went wrong without crashing the entire training run if possible
+ProtocolOpt is a library designed for optimizing time-dependent protocols in physical systems. The primary goal of this project is to provide a flexible and efficient `ProtocolOptimizer` that can train control protocols to minimize specific loss functions (such as thermodynamic work or entropy production) in stochastic simulations.
 
+## Project Overview
 
-## Some stretch goals
-- [ ] MVP NAND, showing 2 bits
-    - [ ] Loose (01 or 10 are 1)
-    - [ ] Strict (11 is only 1)
-- [ ] MVP 2 bit adder, showing 4 bits (01 + 01 = 10 00 as example)
-- [ ] MVP 4 bit adder, showing 8 bits (0101 + 0101 = 1010 0000 as example)
-- [ ] MVP 8 bit adder, showing 16 bits (01010101 + 01010101 = 10101010 00000000 as example)
-- [ ] Show different potential model
-    - [ ] Spline
-    - [ ] Multi-layer Perceptron
+This library provides a modular framework for setting up and running optimization experiments. To use the `ProtocolOptimizer`, you need to define and compose the following core components:
 
-    
+1.  **Potential**: Defines the energy landscape of the system.
+2.  **Simulator**: Handles the dynamics of the system (e.g., Euler-Maruyama for Langevin dynamics).
+3.  **Loss**: Specifies the objective function to be minimized during training.
+4.  **Protocol**: Represents the time-dependent control parameters that are being optimized.
+5.  **InitialConditionGenerator**: Generates the starting states for the simulation.
 
+Optionally, you can add callbacks to the `ProtocolOptimizer` to perform additional actions during the training process.
+
+## Documentation & Resources
+
+- **[Documentation](docs/index.md)**: For detailed API reference and guides, please refer to the documentation in the `docs/` directory.
+- **[Roadmap](docs/roadmap.md)**: Check out the development roadmap for upcoming features and milestones.
+- **[Discussions](https://github.com/MathiasVanPatten/protocolopt/discussions)**: Have questions or ideas? Join the discussion.
+- **[Bug Reports](https://github.com/MathiasVanPatten/protocolopt/issues)**: Found a bug or have a feature request? Open an issue.

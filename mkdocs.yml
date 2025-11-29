@@ -1,0 +1,35 @@
+site_name: ProtocolOpt Docs
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.expand
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          import:
+            - https://docs.python.org/3/objects.inv
+            - https://pytorch.org/docs/stable/objects.inv
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - admonition
+
+nav:
+  - Home: index.md
+  - Roadmap: roadmap.md
+  - API Reference:
+      - Core: reference/core.md
+      - Callbacks: reference/callbacks.md
+      - Losses: reference/losses.md
+      - Potentials: reference/potentials.md
+      - Protocols: reference/protocols.md
+      - Sampling: reference/sampling.md
+      - Simulators: reference/simulators.md
