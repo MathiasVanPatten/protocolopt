@@ -2,6 +2,29 @@
 
 ProtocolOpt is a library designed for optimizing time-dependent protocols in physical systems. The primary goal of this project is to provide a flexible and efficient `ProtocolOptimizer` that can train control protocols to minimize specific loss functions (such as thermodynamic work or entropy production) in stochastic simulations.
 
+## Quick Start
+
+1. Clone the repository:
+```bash
+git clone https://github.com/MathiasVanPatten/protocolopt.git
+cd protocolopt
+```
+
+2. Install the package in development mode (make sure your virtual environment is activated):
+```bash
+pip install -e .
+```
+
+3. Run the examples:
+```bash
+python examples/bitflip_training.py
+```
+
+4. Start the aim server to view the results in a browser:
+```bash
+aim up
+```
+
 ## Project Overview
 
 This library provides a modular framework for setting up and running optimization experiments. To use the `ProtocolOptimizer`, you need to define and compose the following core components:
@@ -12,11 +35,11 @@ This library provides a modular framework for setting up and running optimizatio
 4.  **Protocol**: Represents the time-dependent control parameters that are being optimized.
 5.  **InitialConditionGenerator**: Generates the starting states for the simulation.
 
-Optionally, you can add callbacks to the `ProtocolOptimizer` to perform additional actions during the training process.
+Optionally, you may add callbacks to the `ProtocolOptimizer` to perform additional actions during the training process.
 
 ## Documentation & Resources
 
-- **[Documentation](docs/index.md)**: For detailed API reference and guides, please refer to the documentation in the `docs/` directory.
-- **[Roadmap](docs/roadmap.md)**: Check out the development roadmap for upcoming features and milestones.
+- **[Documentation](https://mathiasvanpatten.github.io/protocolopt/)**: For detailed API reference and guides, please refer to the documentation in the `docs/` directory.
+- **[Roadmap](https://mathiasvanpatten.github.io/protocolopt/roadmap/)**: Check out the development roadmap for upcoming features and milestones.
 - **[Discussions](https://github.com/MathiasVanPatten/protocolopt/discussions)**: Have questions or ideas? Join the discussion.
 - **[Bug Reports](https://github.com/MathiasVanPatten/protocolopt/issues)**: Found a bug or have a feature request? Open an issue.
