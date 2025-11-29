@@ -79,7 +79,7 @@ class McmcNuts(InitialConditionGenerator):
         return samples
 
     def _get_noise(self) -> torch.Tensor:
-        """Generates Brownian noise for the simulation.
+        """Generates noise for the simulation.
 
         Returns:
             Noise tensor. Shape: (Num_Samples, Spatial_Dim, Time_Steps).

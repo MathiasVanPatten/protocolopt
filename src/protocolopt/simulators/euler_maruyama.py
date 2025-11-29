@@ -9,6 +9,10 @@ from typing import Tuple, Any
 
 from ..utils import robust_compile, logger
 from ..core.simulator import Simulator
+from ..core.types import StateSpace, MicrostatePaths, PotentialTensor, MalliavinWeight, ControlSignal
+
+if TYPE_CHECKING:
+    from ..core.potential import Potential
 
 class EulerMaruyama(Simulator):
     """Simulator implementation using the Euler-Maruyama method."""
@@ -56,7 +60,7 @@ class EulerMaruyama(Simulator):
         dot_product = (drift_grad * noise_expanded).sum(dim = 1) # (samples, coeffs, time)
         return dot_product / (noise_sigma ** 2)
         
-    def make_trajectories(
+    def make_microstate_paths(
         self,
         potential: Any,
         initial_pos: torch.Tensor,
@@ -66,24 +70,30 @@ class EulerMaruyama(Simulator):
         noise_sigma: float,
         protocol_tensor: torch.Tensor,
         debug_print: bool = False
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Generates trajectories based on the system dynamics.
+    ) -> Tuple[MicrostatePaths, PotentialTensor, MalliavinWeight]:
+        """Generates microstate paths based on the system dynamics.
 
         Args:
             potential: The potential energy landscape object.
             initial_pos: Starting positions. Shape: (Num_Traj, Spatial_Dim).
             initial_vel: Starting velocities. Shape: (Num_Traj, Spatial_Dim).
             time_steps: Number of integration steps to perform.
-            noise: Brownian noise tensor. Shape: (Num_Traj, Spatial_Dim, Time_Steps).
+            noise: Noise tensor (sampled or given).
+                   Shape: (Batch, Spatial_Dim, Time_Steps)
             noise_sigma: Standard deviation of the noise.
-            protocol_tensor: Time-dependent coefficients for the potential. Shape: (Control_Dim, Time_Steps).
+            protocol_tensor: Time-dependent control signals for the potential.
+                             Shape: (Control_Dim, Time_Steps)
             debug_print: If True, prints statistics about gradients during execution.
 
         Returns:
             A tuple containing:
-            - **trajectories**: Full path of particles. Shape (Num_Traj, Spatial_Dim, Time_Steps+1, 2).
-            - **potential_val**: Potential energy at each step. Shape (Num_Traj, Time_Steps).
-            - **malliavian_weight**: Computed path weights. Shape (Num_Traj, Control_Dim, Time_Steps).
+            - **microstate_paths**: Full path of particles.
+                                    Shape: (Batch, Spatial_Dim, Time_Steps+1, 2)
+                                    Dimension 3 is (position, velocity).
+            - **potential_val**: Potential energy at each step.
+                                 Shape: (Batch, Time_Steps)
+            - **malliavian_weight**: Computed path weights.
+                                     Shape: (Batch, Control_Dim, Time_Steps)
 
         Raises:
             ValueError: If an invalid simulation mode is selected.
@@ -150,10 +160,10 @@ class EulerMaruyama(Simulator):
             logger.info(f"Malliavin weight stats - mean: {self._compute_malliavian_weight(dv_dxda_tensor, noise, noise_sigma).mean().item()}, std: {self._compute_malliavian_weight(dv_dxda_tensor, noise, noise_sigma, dt).std().item()}")
             logger.info(f"dv_dxda_tensor stats - mean: {dv_dxda_tensor.mean().item()}, std: {dv_dxda_tensor.std().item()}, has nan: {torch.isnan(dv_dxda_tensor).any()}")
 
-        trajectories = torch.cat([traj_pos.unsqueeze(-1), traj_vel.unsqueeze(-1)], dim=-1)
+        microstate_paths = torch.cat([traj_pos.unsqueeze(-1), traj_vel.unsqueeze(-1)], dim=-1)
         malliavian_weight = self._compute_malliavian_weight(dv_dxda_tensor, noise, noise_sigma)
 
-        return trajectories, potential_tensor, malliavian_weight
+        return microstate_paths, potential_tensor, malliavian_weight
 
     def debug_gradients(self, dv_dx, U, traj_pos_slice, traj_vel_slice, potential_tensor, dv_dxda_tensor):
         pass

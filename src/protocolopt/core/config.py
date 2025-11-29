@@ -3,8 +3,8 @@ from typing import Optional, List, Dict, Any, Union
 import torch
 
 @dataclass
-class SimulationConfig:
-    """Configuration for the Simulation class.
+class ProtocolOptimizerConfig:
+    """Configuration for the ProtocolOptimizer class.
 
     Attributes:
         spatial_dimensions: Number of spatial dimensions.
@@ -56,8 +56,8 @@ class SimulationConfig:
     num_samples: int = 1000
 
     @classmethod
-    def from_dict(cls, params: Dict[str, Any]) -> 'SimulationConfig':
-        """Creates a SimulationConfig from a dictionary, ignoring unknown keys."""
+    def from_dict(cls, params: Dict[str, Any]) -> 'ProtocolOptimizerConfig':
+        """Creates a ProtocolOptimizerConfig from a dictionary, ignoring unknown keys."""
         valid_keys = cls.__dataclass_fields__.keys()
         filtered_params = {k: v for k, v in params.items() if k in valid_keys}
         return cls(**filtered_params)

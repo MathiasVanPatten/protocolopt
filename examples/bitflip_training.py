@@ -4,7 +4,7 @@ from protocolopt.potentials import GeneralCoupledPotential
 from protocolopt.protocols import LinearPiecewise
 from protocolopt.simulators import EulerMaruyama
 from protocolopt.losses import StandardLogicGateLoss
-from protocolopt import Simulation
+from protocolopt import ProtocolOptimizer
 from protocolopt.sampling import ConditionalFlow, LaplaceApproximation
 from protocolopt.callbacks import TrajectoryPlotCallback, ConfusionMatrixCallback, PotentialLandscapePlotCallback, ProtocolPlotCallback
 try:
@@ -24,7 +24,7 @@ else:
 
 print(f"Using device: {device}")
 
-# Simulation parameters
+# ProtocolOptimizer parameters
 time_steps = 100
 dt = 1/time_steps
 gamma = 0.1
@@ -98,7 +98,7 @@ loss = StandardLogicGateLoss(
     exponent=2
 )
 
-# Build params dictionary for Simulation
+# Build params dictionary for ProtocolOptimizer
 params = {
     'spatial_dimensions': spatial_dimensions,
     'time_steps': time_steps,
@@ -165,8 +165,8 @@ init_cond_generator = LaplaceApproximation(
     device=device
 )
 
-# Instantiate Simulation
-simulation = Simulation(
+# Instantiate ProtocolOptimizer
+simulation = ProtocolOptimizer(
     potential=potential,
     simulator=simulator,
     loss=loss,
