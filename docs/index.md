@@ -14,6 +14,8 @@ The core of the library is the `ProtocolOptimizer`, which orchestrates the train
 - **Losses**: Define the objective function for optimization.
 - **Sampling**: Generate initial conditions for simulations.
 
+Optionally, you may add callbacks to the `ProtocolOptimizer` to perform additional actions during the training process.
+
 ## Getting Started
 
 See the [API Reference](reference/core.md) for detailed documentation of the classes and functions.
