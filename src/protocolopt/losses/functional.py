@@ -2,15 +2,7 @@
 import torch
 from ..core.types import PotentialTensor, MicrostatePaths, ControlSignal
 
-def work_loss(potential_tensor: PotentialTensor) -> torch.Tensor:
-    """Computes work loss based on potential changes.
-
-    Args:
-        potential_tensor: Potential energy. Shape: (Batch, Time_Steps)
-
-    Returns:
-        Work loss. Shape: (Batch,)
-    """
+def work_loss(potential_tensor):
     return (potential_tensor[...,1:] - potential_tensor[...,:-1]).sum(axis = -1)
 
 def variance_loss(microstate_paths: MicrostatePaths, starting_bits_int: torch.Tensor, domain_size: int, phase_dimension: int = 0) -> torch.Tensor:
@@ -41,15 +33,6 @@ def variance_loss(microstate_paths: MicrostatePaths, starting_bits_int: torch.Te
                   ).mean(dim=(1, 2)) #compute the variance using cohort mean over space and time then mean each trajectories var over space and time
     return var_loss
 
-def temporal_smoothness_penalty(protocol_tensor: ControlSignal, dt: float) -> torch.Tensor:
-    """Computes temporal smoothness penalty for the protocol.
-
-    Args:
-        protocol_tensor: Control signals. Shape: (Control_Dim, Time_Steps)
-        dt: Time step size.
-
-    Returns:
-        Smoothness penalty. Scalar.
-    """
+def temporal_smoothness_penalty(protocol_tensor, dt):
     dcoeff_dt = (protocol_tensor[:, 1:] - protocol_tensor[:, :-1]) / dt
     return (dcoeff_dt ** 2).mean()

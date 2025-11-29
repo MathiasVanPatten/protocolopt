@@ -16,7 +16,7 @@ class QuarticPotential(Potential):
                              Shape: (Control_Dim,)
 
         Returns:
-            Potential value. Shape: (Batch,) or scalar.
+            Potential value.
         """
         return torch.sum(protocol_tensor[0] * space_grid**4 - protocol_tensor[1] * space_grid**2, dim=-1)
 
@@ -33,6 +33,6 @@ class QuarticPotentialWithLinearTerm(Potential):
                              Shape: (Control_Dim,)
 
         Returns:
-            Potential value. Shape: (Batch,) or scalar.
+            Potential value.
         """
         return torch.sum(protocol_tensor[0] * space_grid**4 - protocol_tensor[1] * space_grid**2 + protocol_tensor[2] * space_grid, dim=-1)

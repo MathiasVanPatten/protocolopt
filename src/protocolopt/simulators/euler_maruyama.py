@@ -5,7 +5,7 @@
 import torch
 import sys
 import os
-from typing import Tuple, Any, TYPE_CHECKING
+from typing import Tuple, Any
 
 from ..utils import robust_compile, logger
 from ..core.simulator import Simulator
@@ -62,23 +62,21 @@ class EulerMaruyama(Simulator):
         
     def make_microstate_paths(
         self,
-        potential: "Potential",
-        initial_pos: StateSpace,
-        initial_vel: StateSpace,
+        potential: Any,
+        initial_pos: torch.Tensor,
+        initial_vel: torch.Tensor,
         time_steps: int,
         noise: torch.Tensor,
         noise_sigma: float,
-        protocol_tensor: ControlSignal,
+        protocol_tensor: torch.Tensor,
         debug_print: bool = False
     ) -> Tuple[MicrostatePaths, PotentialTensor, MalliavinWeight]:
         """Generates microstate paths based on the system dynamics.
 
         Args:
             potential: The potential energy landscape object.
-            initial_pos: Starting positions.
-                         Shape: (Batch, Spatial_Dim)
-            initial_vel: Starting velocities.
-                         Shape: (Batch, Spatial_Dim)
+            initial_pos: Starting positions. Shape: (Num_Traj, Spatial_Dim).
+            initial_vel: Starting velocities. Shape: (Num_Traj, Spatial_Dim).
             time_steps: Number of integration steps to perform.
             noise: Noise tensor (sampled or given).
                    Shape: (Batch, Spatial_Dim, Time_Steps)

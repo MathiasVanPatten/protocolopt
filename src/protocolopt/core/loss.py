@@ -1,6 +1,6 @@
 import torch
 from abc import ABC, abstractmethod
-from typing import Tuple, Dict, Any, TYPE_CHECKING
+from typing import Tuple, Dict, Any
 from torch.func import vmap
 from .types import PotentialTensor, MicrostatePaths, ControlSignal, MalliavinWeight
 
@@ -34,11 +34,11 @@ class Loss(ABC):
         """
         pass
 
-    def _compute_direct_grad(self, loss_values: torch.Tensor):
+    def _compute_direct_grad(self, loss_values):
         loss_values.mean(axis = -1).backward()
         pass
 
-    def _compute_malliavin_grad(self, loss_values: torch.Tensor, malliavian_weights: MalliavinWeight) -> torch.Tensor:
+    def _compute_malliavin_grad(self, loss_values, malliavian_weights):
         #malliavian_weights are (num_samples, coeff_count, time_steps)
         return (loss_values[:,None, None] * malliavian_weights).mean(axis = 0)
 

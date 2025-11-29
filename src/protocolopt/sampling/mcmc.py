@@ -2,7 +2,6 @@ from ..core.sampling import InitialConditionGenerator
 from ..core.potential import Potential
 from ..core.protocol import Protocol
 from ..core.loss import Loss
-from ..core.types import StateSpace
 from torch.utils.data import DataLoader, TensorDataset
 import torch.nn as nn
 from pyro.infer.mcmc import MCMC, NUTS
@@ -60,7 +59,7 @@ class McmcNuts(InitialConditionGenerator):
         if self.run_every_epoch:
             print("Warning: Running MCMC every epoch will be very slow and is not recommended for training. Please use the ConditionalFlowBoltzmannGenerator instead if your potential doesn't change at t0.")
 
-    def _get_initial_velocities(self) -> StateSpace:
+    def _get_initial_velocities(self) -> torch.Tensor:
         """Generates initial velocities from the Maxwell-Boltzmann distribution.
 
         Returns:
@@ -88,7 +87,7 @@ class McmcNuts(InitialConditionGenerator):
         samples = torch.randn(self.mcmc_num_samples, self.spatial_dimensions, self.time_steps, device=self.device) * self.noise_sigma * math.sqrt(self.dt)
         return samples
 
-    def _run_multichain_mcmc(self, potential: Potential, protocol: Protocol, loss: Loss) -> StateSpace:
+    def _run_multichain_mcmc(self, potential: Potential, protocol: Protocol, loss: Loss) -> torch.Tensor:
         """Run MCMC sampling, either per-well or global depending on parameters.
 
         Args:
@@ -250,7 +249,7 @@ class McmcNuts(InitialConditionGenerator):
             well_bounds.append(well_bound)
         return well_bounds
 
-    def generate_initial_conditions(self, potential: Potential, protocol: Protocol, loss: Loss) -> Tuple[StateSpace, StateSpace, torch.Tensor]:
+    def generate_initial_conditions(self, potential: Potential, protocol: Protocol, loss: Loss) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Generates initial conditions (positions, velocities, noise).
 
         Args:

@@ -6,7 +6,6 @@ except ImportError:
     print("Warning: Aim not installed. Install with 'pip install aim' to use AimCallback")
 
 from ..core.callback import Callback
-from typing import Optional, Dict, Any, TYPE_CHECKING
 import torch
 
 if TYPE_CHECKING:
@@ -15,8 +14,8 @@ if TYPE_CHECKING:
 class AimCallback(Callback):
     """Callback for experiment tracking with Aim"""
     
-    def __init__(self, experiment_name: Optional[str] = None, repo_path: Optional[str] = None, log_system_params: bool = True,
-                 capture_terminal_logs: bool = False, run_hash: Optional[str] = None):
+    def __init__(self, experiment_name=None, repo_path=None, log_system_params=True, 
+                 capture_terminal_logs=False, run_hash=None):
         """
         Args:
             experiment_name: Name for the experiment

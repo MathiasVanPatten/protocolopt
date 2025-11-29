@@ -1,7 +1,7 @@
 from ..core.loss import Loss, TruthTableError
 from ..core.types import PotentialTensor, MicrostatePaths, ControlSignal
 from .functional import variance_loss, work_loss, temporal_smoothness_penalty
-from typing import Dict, Optional, Union, List, Any
+from typing import Dict, Optional, Union, List
 import torch
 
 class LogicGateEndpointLossBase(Loss):
@@ -13,7 +13,6 @@ class LogicGateEndpointLossBase(Loss):
         Args:
             midpoints: Midpoints defining bit boundaries in each spatial dimension. Currently only
                 supports binary mapping. Should be a vector of midpoints for each spatial dimension.
-                Shape: (Spatial_Dim,)
             truth_table: Dictionary defining valid transitions. It should be nested with one input bit
                 at a time as the keys with the innermost level showing the acceptable outputs (as a list
                 of bit strings) for that bit configuration. You must fully define the input/output space
@@ -26,7 +25,6 @@ class LogicGateEndpointLossBase(Loss):
             exponent: Exponent for the distance metric (p-norm).
             starting_bit_weights: Optional tensor of weights for each starting state (int representation).
                 Shape should match domain size.
-                Shape: (Domain_Size,)
 
         Examples:
             NAND with 2 bits with the rightmost bit being used as the output:
@@ -166,7 +164,7 @@ class LogicGateEndpointLossBase(Loss):
 class StandardLogicGateLoss(LogicGateEndpointLossBase):
     """Standard loss function combining logic gate endpoint error, work, variance, and smoothness."""
 
-    def __init__(self, midpoints: torch.Tensor, truth_table: Dict[int, Union[List[str], Dict]], bit_locations: torch.Tensor, endpoint_weight: float = 1, work_weight: float = 1, var_weight: float = 1, smoothness_weight: float = 1, exponent: int = 2, starting_bit_weights: Optional[torch.Tensor] = None):
+    def __init__(self, midpoints, truth_table, bit_locations, endpoint_weight = 1, work_weight = 1, var_weight = 1, smoothness_weight = 1, exponent = 2, starting_bit_weights=None):
         """Initializes StandardLogicGateLoss.
 
         Args:

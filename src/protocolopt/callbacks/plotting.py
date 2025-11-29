@@ -25,7 +25,7 @@ plt.ioff()
 class TrajectoryPlotCallback(Callback):
     """Callback for plotting microstate paths over time"""
     
-    def __init__(self, save_dir: str = 'figs', plot_frequency: Optional[int] = None, num_trajectories: int = 100):
+    def __init__(self, save_dir='figs', plot_frequency=None, num_trajectories=100):
         """
         Args:
             save_dir: Directory to save plots (relative to working directory or absolute path)
@@ -36,7 +36,7 @@ class TrajectoryPlotCallback(Callback):
         self.save_dir.mkdir(parents=True, exist_ok=True)
         self.plot_frequency = plot_frequency
         self.num_trajectories = num_trajectories
-        self.total_epochs: Optional[int] = None
+        self.total_epochs = None
     
     def _log_or_save_figure(self, fig: plt.Figure, name: str, epoch: int, optimizer_object: "ProtocolOptimizer", dpi: int = 150) -> None:
         """Log figure to Aim if available, otherwise save to disk"""
@@ -95,7 +95,7 @@ class TrajectoryPlotCallback(Callback):
 class ConfusionMatrixCallback(Callback):
     """Callback for plotting confusion matrix of binary state transitions"""
     
-    def __init__(self, save_dir: str = 'figs', plot_frequency: Optional[int] = None):
+    def __init__(self, save_dir='figs', plot_frequency=None):
         """
         Args:
             save_dir: Directory to save plots
@@ -104,7 +104,7 @@ class ConfusionMatrixCallback(Callback):
         self.save_dir = Path(save_dir)
         self.save_dir.mkdir(parents=True, exist_ok=True)
         self.plot_frequency = plot_frequency
-        self.total_epochs: Optional[int] = None
+        self.total_epochs = None
     
     def _log_or_save_figure(self, fig: plt.Figure, name: str, epoch: int, optimizer_object: "ProtocolOptimizer", dpi: int = 150) -> None:
         """Log figure to Aim if available, otherwise save to disk"""
@@ -215,12 +215,12 @@ class ConfusionMatrixCallback(Callback):
 
 class PotentialLandscapePlotCallback(Callback):
     
-    def __init__(self, save_dir: str = 'figs', plot_frequency: Optional[int] = None, spatial_resolution: int = 100, trajectories_per_bit: int = 10):
+    def __init__(self, save_dir='figs', plot_frequency=None, spatial_resolution=100, trajectories_per_bit=10):
         self.save_dir = Path(save_dir)
         self.plot_frequency = plot_frequency
         self.spatial_resolution = spatial_resolution
         self.trajectories_per_bit = trajectories_per_bit
-        self.total_epochs: Optional[int] = None
+        self.total_epochs = None
     
     def _log_or_save_figure(self, fig: plt.Figure, name: str, epoch: int, optimizer_object: "ProtocolOptimizer", dpi: int = 150) -> None:
         aim_callback = next((cb for cb in optimizer_object.callbacks
@@ -254,7 +254,7 @@ class PotentialLandscapePlotCallback(Callback):
         if not should_plot:
             return
         
-        protocol_tensor: Optional[ControlSignal] = sim_dict.get('protocol_tensor', None)
+        protocol_tensor = sim_dict.get('protocol_tensor', None)
         if protocol_tensor is None:
             return
         
@@ -351,10 +351,10 @@ class PotentialLandscapePlotCallback(Callback):
 
 class ProtocolPlotCallback(Callback):
     
-    def __init__(self, save_dir: str = 'figs', plot_frequency: Optional[int] = None):
+    def __init__(self, save_dir='figs', plot_frequency=None):
         self.save_dir = Path(save_dir)
         self.plot_frequency = plot_frequency
-        self.total_epochs: Optional[int] = None
+        self.total_epochs = None
     
     def _log_or_save_figure(self, fig: plt.Figure, name: str, epoch: int, optimizer_object: "ProtocolOptimizer", dpi: int = 150) -> None:
         aim_callback = next((cb for cb in optimizer_object.callbacks
@@ -388,7 +388,7 @@ class ProtocolPlotCallback(Callback):
         if not should_plot:
             return
         
-        protocol_tensor: Optional[ControlSignal] = sim_dict.get('protocol_tensor', None)
+        protocol_tensor = sim_dict.get('protocol_tensor', None)
         if protocol_tensor is None:
             return
         
