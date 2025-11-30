@@ -44,7 +44,7 @@ class ConditionalFlow(McmcNuts, nn.Module):
             spatial_dimensions (int): Number of spatial dimensions.
             time_steps (int): Number of time steps.
             beta (float): 1/kT
-            starting_bounds (torch.Tensor): Bounds for starting positions.
+            starting_bounds (Optional[torch.Tensor]): Bounds for starting positions. Defaults to global bounds if None.
             samples_per_well (int): Samples per well.
             num_samples (int): Total samples if not per well.
             chains_per_well (int): Chains per well.

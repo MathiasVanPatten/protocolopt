@@ -72,25 +72,24 @@ class ProtocolOptimizer:
 
     def simulate(
         self,
-        manual_inital_pos: Optional[torch.Tensor] = None,
+        manual_initial_pos: Optional[torch.Tensor] = None,
         manual_initial_vel: Optional[torch.Tensor] = None,
         manual_noise: Optional[torch.Tensor] = None
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Runs a single simulation batch.
 
         Args:
-            manual_inital_pos: Optional override for initial positions.
+            manual_initial_pos: Optional override for initial positions.
             manual_initial_vel: Optional override for initial velocities.
             manual_noise: Optional override for noise.
-            debug_print: Whether to print debug info from simulator.
 
         Returns:
-            A tuple of (microstate_paths, potential_val, malliavian_weight, protocol_tensor).
+            A tuple of (microstate_paths, potential_val, malliavin_weight, protocol_tensor).
         """
         initial_pos, initial_vel, noise = self.init_cond_generator.generate_initial_conditions(self.potential, self.protocol, self.loss)
 
-        if manual_inital_pos is not None:
-            initial_pos = manual_inital_pos
+        if manual_initial_pos is not None:
+            initial_pos = manual_initial_pos
         if manual_initial_vel is not None:
             initial_vel = manual_initial_vel
         if manual_noise is not None:
@@ -98,7 +97,7 @@ class ProtocolOptimizer:
 
         protocol_tensor = self.protocol.get_protocol_tensor()
 
-        microstate_paths, potential_val, malliavian_weight = self.simulator.make_microstate_paths(
+        microstate_paths, potential_val, malliavin_weight = self.simulator.make_microstate_paths(
             self.potential,
             initial_pos,
             initial_vel,
@@ -107,7 +106,7 @@ class ProtocolOptimizer:
             protocol_tensor
         )
 
-        return microstate_paths, potential_val, malliavian_weight, protocol_tensor
+        return microstate_paths, potential_val, malliavin_weight, protocol_tensor
 
     def _setup_optimizer(self):
         self.optimizer = self.optimizer_class(self.protocol.trainable_params(), lr=self.learning_rate, **self.optimizer_kwargs)
@@ -122,7 +121,10 @@ class ProtocolOptimizer:
             self.scheduler = None
 
     def train(self) -> None:
-        """Runs the training loop."""
+        """Runs the training loop.
+
+        Mutates the `protocol` object in-place.
+        """
         self._setup_optimizer()
 
         for callback in self.callbacks:
@@ -136,14 +138,14 @@ class ProtocolOptimizer:
 
                 self.optimizer.zero_grad()
 
-                microstate_paths, potential_val, malliavian_weight, protocol_tensor = self.simulate()
+                microstate_paths, potential_val, malliavin_weight, protocol_tensor = self.simulate()
 
                 dt = getattr(self.simulator, 'dt', None)
                 if dt is None:
                     dt = 1.0 / self.protocol.time_steps
 
                 total_loss, per_traj_loss = self.loss.compute_FRR_gradient( self.potential,
-                    potential_val, microstate_paths, malliavian_weight,
+                    potential_val, microstate_paths, malliavin_weight,
                     protocol_tensor, dt
                 )
 
@@ -169,7 +171,7 @@ class ProtocolOptimizer:
                 sim_dict_detached = {
                     'microstate_paths': microstate_paths.detach(),
                     'potential': potential_val.detach(),
-                    'malliavian_weight': malliavian_weight.detach(),
+                    'malliavin_weight': malliavin_weight.detach(),
                     'protocol_tensor': protocol_tensor.detach()
                 }
 

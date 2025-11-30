@@ -18,7 +18,6 @@ class Simulator(ABC):
         time_steps: int,
         noise: torch.Tensor,
         protocol_tensor: torch.Tensor,
-        debug_print: bool = False
     ) -> Tuple[MicrostatePaths, PotentialTensor, MalliavinWeight]:
         """Generates microstate paths based on the system dynamics.
 
@@ -31,7 +30,6 @@ class Simulator(ABC):
                    Shape: (Batch, Spatial_Dim, Time_Steps)
             protocol_tensor: Time-dependent control signals for the potential.
                              Shape: (Control_Dim, Time_Steps)
-            debug_print: If True, prints statistics about gradients during execution.
 
         Returns:
             A tuple containing:
@@ -40,7 +38,7 @@ class Simulator(ABC):
                                     Dimension 3 is (position, velocity).
             - **potential_val**: Potential energy at each step.
                                  Shape: (Batch, Time_Steps)
-            - **malliavian_weight**: Computed path weights.
-                                     Shape: (Batch, Control_Dim, Time_Steps)
+            - **malliavin_weight**: Computed path weights.
+                                    Shape: (Batch, Control_Dim, Time_Steps)
         """
         pass

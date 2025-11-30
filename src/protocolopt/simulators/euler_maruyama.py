@@ -66,7 +66,7 @@ class EulerMaruyama(Simulator):
         next_vel = (current_vel - gamma * current_vel * dt - dv_dx * dt + noise) / mass
         return next_pos, next_vel
 
-    def _compute_malliavian_weight(self, dv_dxda, noise, noise_sigma):
+    def _compute_malliavin_weight(self, dv_dxda, noise, noise_sigma):
         # dv_dxda: (samples, spatial, coeffs, time)
         # noise: (samples, spatial, time)
         # output: (samples, coeffs, time)
@@ -103,7 +103,7 @@ class EulerMaruyama(Simulator):
                                     Dimension 3 is (position, velocity).
             - **potential_val**: Potential energy at each step.
                                  Shape: (Batch, Time_Steps)
-            - **malliavian_weight**: Computed path weights.
+            - **malliavin_weight**: Computed path weights.
                                      Shape: (Batch, Control_Dim, Time_Steps)
 
         Raises:
@@ -168,9 +168,6 @@ class EulerMaruyama(Simulator):
         dv_dxda_tensor = torch.stack(dv_dxda_list, dim=-1)  # (num_traj, coeff_count, time_steps)
 
         microstate_paths = torch.cat([traj_pos.unsqueeze(-1), traj_vel.unsqueeze(-1)], dim=-1)
-        malliavian_weight = self._compute_malliavian_weight(dv_dxda_tensor, noise, self.noise_sigma)
+        malliavin_weight = self._compute_malliavin_weight(dv_dxda_tensor, noise, self.noise_sigma)
 
-        return microstate_paths, potential_tensor, malliavian_weight
-
-    def debug_gradients(self, dv_dx, U, traj_pos_slice, traj_vel_slice, potential_tensor, dv_dxda_tensor):
-        pass
+        return microstate_paths, potential_tensor, malliavin_weight

@@ -264,7 +264,7 @@ class McmcNuts(InitialConditionGenerator):
         return -self.beta * potential.potential_value(state_vectors, coeff_at_t0)
 
     def _posterior_for_mcmc(self, bounds_low: torch.Tensor, bounds_high: torch.Tensor, potential: Potential, protocol: Protocol) -> None:
-        #makes it look like pyro need it to look
+        """Wraps the potential energy function into a Pyro-compatible factor for NUTS sampling."""
         x = pyro.sample("x", pyro.distributions.Uniform(bounds_low, bounds_high).to_event(1))
         pyro.factor("logp", self._log_prob(x.unsqueeze(-1), potential, protocol))
 

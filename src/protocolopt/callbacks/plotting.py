@@ -12,7 +12,6 @@ if TYPE_CHECKING:
 
 plt.ioff()
 
-
 class TrajectoryPlotCallback(BasePlottingCallback):
     """Callback for plotting microstate paths over time"""
     
@@ -144,6 +143,13 @@ class ConfusionMatrixCallback(BasePlottingCallback):
 class PotentialLandscapePlotCallback(BasePlottingCallback):
     
     def __init__(self, save_dir='figs', plot_frequency=None, spatial_resolution=100, trajectories_per_bit=10):
+        """
+        Args:
+            save_dir: Directory to save plots if Aim is not available.
+            plot_frequency: How often to plot (e.g., every N epochs).
+            spatial_resolution: Number of points to grid the spatial dimension for potential evaluation.
+            trajectories_per_bit: Number of trajectories to overlay per bit state.
+        """
         self.save_dir = Path(save_dir)
         self.plot_frequency = plot_frequency
         self.spatial_resolution = spatial_resolution
@@ -249,6 +255,11 @@ class PotentialLandscapePlotCallback(BasePlottingCallback):
 class ProtocolPlotCallback(BasePlottingCallback):
     
     def __init__(self, save_dir='figs', plot_frequency=None):
+        """
+        Args:
+            save_dir: Directory to save plots if Aim is not available.
+            plot_frequency: How often to plot (e.g., every N epochs).
+        """
         self.save_dir = Path(save_dir)
         self.plot_frequency = plot_frequency
         self.total_epochs = None
@@ -292,6 +303,11 @@ class InfluenceHeatmapCallback(BasePlottingCallback):
     Visualizes the Information Ripple: How much does Bit i depend on Bit i-1 over time?
     """
     def __init__(self, save_dir: str = 'figs', plot_frequency: Optional[int] = None):
+        """
+        Args:
+            save_dir: Directory to save plots if Aim is not available.
+            plot_frequency: How often to plot (e.g., every N epochs).
+        """
         self.save_dir = Path(save_dir)
         self.save_dir.mkdir(parents=True, exist_ok=True)
         self.plot_frequency = plot_frequency
