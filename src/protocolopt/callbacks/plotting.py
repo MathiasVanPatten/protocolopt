@@ -277,7 +277,7 @@ class ProtocolPlotCallback(BasePlottingCallback):
             ax.plot(time_array, protocol_tensor_cpu[coeff_idx, :])
             ax.set_xlabel('Time')
             ax.set_ylabel(f'Coeff {coeff_idx}')
-            ax.set_title(f'Coefficient {coeff_idx}')
+            ax.set_title(f'Control Var {coeff_idx}')
             ax.grid(True, alpha=0.3)
         
         for idx in range(control_dim, len(axes)):
