@@ -11,34 +11,54 @@ from typing import Dict, Any, Tuple
 class LaplaceApproximation(InitialConditionGenerator):
     """Initial condition generator using Laplace Approximation around potential minima."""
 
-    def __init__(self, params: Dict[str, Any], centers: torch.Tensor, device: torch.device) -> None:
+    def __init__(
+        self, 
+        dt: float, 
+        gamma: float, 
+        mass: float, 
+        centers: torch.Tensor, 
+        device: torch.device,
+        beta: float = 1.0,
+        spatial_dimensions: int = 1, 
+        time_steps: int = 1000,
+        num_samples: int = 1000
+    ) -> None:
         """Initializes LaplaceApproximation.
 
         Args:
-            params: Configuration dictionary.
-            centers: Tensor of center locations for approximation.
-            device: Torch device.
+            dt (float): Time step.
+            gamma (float): Friction coefficient.
+            mass (float): Particle mass.
+            centers (torch.Tensor): Tensor of center locations for approximation.
+            device (torch.device): Torch device.
+            beta (float): 1/kT
+            spatial_dimensions (int): Number of spatial dimensions.
+            time_steps (int): Number of time steps.
+            num_samples (int): Number of samples to generate.
         """
         self.centers = centers
         self.device = device
-        self.dt = params['dt']
-        self.gamma = params['gamma']
-        self.mass = params['mass']
-        self.beta = params['beta']
-        self.spatial_dimensions = params.get('spatial_dimensions', 1)
-        self.time_steps = params.get('time_steps', 1000)
-        self.mcmc_starting_spatial_bounds = params.get('mcmc_starting_spatial_bounds', None)
-
-        if 'num_samples' in params:
-            self.num_samples = params['num_samples']
-        elif 'mcmc_num_samples' in params:
-            self.num_samples = params['mcmc_num_samples']
-        elif 'samples_per_well' in params:
-             self.num_samples = params['samples_per_well'] * (2**self.spatial_dimensions)
-        else:
-             self.num_samples = 1000
+        self.dt = dt
+        self.gamma = gamma
+        self.mass = mass
+        self.beta = beta
+        self.spatial_dimensions = spatial_dimensions
+        self.time_steps = time_steps
+        self.num_samples = num_samples
 
         self.noise_sigma = torch.sqrt(torch.tensor(2 * self.gamma / self.beta))
+        
+        self.hparams = {
+            'centers_shape': list(self.centers.shape),
+            'dt': self.dt,
+            'gamma': self.gamma,
+            'mass': self.mass,
+            'beta': self.beta,
+            'spatial_dimensions': self.spatial_dimensions,
+            'time_steps': self.time_steps,
+            'num_samples': self.num_samples,
+            'name': self.__class__.__name__
+        }
 
     def _solve_landscape(self, potential: Potential, protocol: Protocol) -> None:
         """Computes the Hessian and log weights at the centers."""

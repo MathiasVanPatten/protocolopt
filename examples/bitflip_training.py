@@ -98,23 +98,6 @@ loss = StandardLogicGateLoss(
     exponent=2
 )
 
-# Build params dictionary for ProtocolOptimizer
-params = {
-    'spatial_dimensions': spatial_dimensions,
-    'time_steps': time_steps,
-    'samples_per_well': samples_per_well,
-    'mcmc_warmup_ratio': mcmc_warmup_ratio,
-    'mcmc_starting_spatial_bounds': mcmc_starting_spatial_bounds,
-    'mcmc_chains_per_well': 1,
-    'beta': beta,
-    'epochs': training_iterations,
-    'learning_rate': learning_rate,
-    'dt': dt,
-    'gamma': gamma,
-    'mass': mass,
-    'num_samples': 3000
-}
-
 # Create callbacks
 callbacks = []
 
@@ -132,14 +115,6 @@ confusion_matrix_callback = ConfusionMatrixCallback(
 )
 callbacks.append(confusion_matrix_callback)
 
-# Add Aim callback if available
-if AIM_AVAILABLE:
-    aim_callback = AimCallback(
-        experiment_name='bitflip_training',
-        log_system_params=False
-    )
-    callbacks.append(aim_callback)
-
 potential_landscape_callback = PotentialLandscapePlotCallback(
     save_dir='figs',
     plot_frequency=None
@@ -153,16 +128,42 @@ coefficient_callback = ProtocolPlotCallback(
 
 callbacks.append(coefficient_callback)
 
+# IMPORTANT: AimCallback must be last
+# Add Aim callback if available
+if AIM_AVAILABLE:
+    aim_callback = AimCallback(
+        experiment_name='bitflip_training',
+        log_system_params=False
+    )
+    callbacks.append(aim_callback)
+
 
 # init_cond_generator = ConditionalFlow(
-#     params=params,
-#     device=device
+#     dt=dt,
+#     gamma=gamma,
+#     mass=mass,
+#     device=device,
+#     spatial_dimensions=spatial_dimensions,
+#     time_steps=time_steps,
+#     beta=beta,
+#     starting_bounds=mcmc_starting_spatial_bounds,
+#     samples_per_well=samples_per_well,
+#     chains_per_well=1,
+#     warmup_ratio=mcmc_warmup_ratio
 # )
 
+num_samples = samples_per_well * (2**spatial_dimensions)
+
 init_cond_generator = LaplaceApproximation(
-    params=params,
+    dt=dt,
+    gamma=gamma,
+    mass=mass,
     centers=bit_locations,
-    device=device
+    device=device,
+    beta=beta,
+    spatial_dimensions=spatial_dimensions,
+    time_steps=time_steps,
+    num_samples=num_samples
 )
 
 # Instantiate ProtocolOptimizer
@@ -172,8 +173,11 @@ simulation = ProtocolOptimizer(
     loss=loss,
     protocol=protocol,
     initial_condition_generator=init_cond_generator,
-    params=params,
-    callbacks=callbacks
+    epochs=training_iterations,
+    learning_rate=learning_rate,
+    callbacks=callbacks,
+    scheduler_kwargs={'T_0': training_iterations // 5},
+    scheduler_restart_decay=0.75
 )
 
 if __name__ == '__main__':

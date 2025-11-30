@@ -1,7 +1,7 @@
 from ..core.loss import Loss, TruthTableError
 from ..core.types import PotentialTensor, MicrostatePaths, ControlSignal
 from .functional import variance_loss, work_loss, temporal_smoothness_penalty
-from typing import Dict, Optional, Union, List
+from typing import Dict, Optional, Union, List, Any
 import torch
 
 class LogicGateEndpointLossBase(Loss):
@@ -58,11 +58,21 @@ class LogicGateEndpointLossBase(Loss):
         self.bit_locations = bit_locations
         self.exponent = exponent
         self.starting_bit_weights = starting_bit_weights
+        self.truth_table = truth_table
         self._validate_input_sequence_in_truth_table(truth_table)
         self.domain = 2**self._get_depth_of_truth_table(truth_table)
         self.flattened_truth_table = {k : None for k in range(self.domain)}
         self._flatten_truth_table(truth_table)
         self._gen_validity_mapping()
+        self.hparams = {
+            'midpoints': self.midpoints.tolist() if isinstance(self.midpoints, torch.Tensor) else self.midpoints,
+            'truth_table': self.truth_table,
+            'bit_locations_shape': list(self.bit_locations.shape),
+            'exponent': self.exponent,
+            'starting_bit_weights': self.starting_bit_weights.tolist() if self.starting_bit_weights is not None else None,
+            'domain': self.domain,
+            'name': self.__class__.__name__
+        }
 
     def _get_depth_of_truth_table(self, truth_table_dict):
         if not isinstance(truth_table_dict[0], dict):
@@ -184,6 +194,13 @@ class StandardLogicGateLoss(LogicGateEndpointLossBase):
         self.var_weight = var_weight
         self.smoothness_weight = smoothness_weight
 
+        self.hparams.update({
+            'endpoint_weight': self.endpoint_weight,
+            'work_weight': self.work_weight,
+            'var_weight': self.var_weight,
+            'smoothness_weight': self.smoothness_weight
+        })
+
     def loss(self, potential_tensor: PotentialTensor, microstate_paths: MicrostatePaths, protocol_tensor: ControlSignal, dt: float) -> torch.Tensor:
         """Computes the combined loss.
 
@@ -208,7 +225,7 @@ class StandardLogicGateLoss(LogicGateEndpointLossBase):
             + self.smoothness_weight * smoothness_loss_value
         )
     
-    def compute_loss_components(self, potential_tensor: PotentialTensor, microstate_paths: MicrostatePaths, protocol_tensor: ControlSignal, dt: float) -> Dict[str, torch.Tensor]:
+    def log_components(self, potential_tensor: PotentialTensor, microstate_paths: MicrostatePaths, protocol_tensor: ControlSignal, dt: float) -> Dict[str, torch.Tensor]:
         """
         Compute individual loss components for logging/analysis.
         

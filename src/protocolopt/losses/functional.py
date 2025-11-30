@@ -1,8 +1,15 @@
-#for simple losses that are stateless
 import torch
 from ..core.types import PotentialTensor, MicrostatePaths, ControlSignal
 
 def work_loss(potential_tensor):
+    """Calculates the discrete work increment sum Delta V.
+
+    Args:
+        potential_tensor: Potential values along paths.
+
+    Returns:
+        Total work done along each path.
+    """
     return (potential_tensor[...,1:] - potential_tensor[...,:-1]).sum(axis = -1)
 
 def variance_loss(microstate_paths: MicrostatePaths, starting_bits_int: torch.Tensor, domain_size: int, phase_dimension: int = 0) -> torch.Tensor:
@@ -34,5 +41,14 @@ def variance_loss(microstate_paths: MicrostatePaths, starting_bits_int: torch.Te
     return var_loss
 
 def temporal_smoothness_penalty(protocol_tensor, dt):
+    """Calculates the mean squared time-derivative of control parameters.
+
+    Args:
+        protocol_tensor: Time-dependent control signals.
+        dt: Time step size.
+
+    Returns:
+        Mean squared derivative penalty.
+    """
     dcoeff_dt = (protocol_tensor[:, 1:] - protocol_tensor[:, :-1]) / dt
     return (dcoeff_dt ** 2).mean()

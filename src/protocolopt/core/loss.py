@@ -1,6 +1,6 @@
 import torch
 from abc import ABC, abstractmethod
-from typing import Tuple, Dict, Any
+from typing import Tuple, Dict, Any, TYPE_CHECKING
 from torch.func import vmap
 from .types import PotentialTensor, MicrostatePaths, ControlSignal, MalliavinWeight
 
@@ -38,16 +38,16 @@ class Loss(ABC):
         loss_values.mean(axis = -1).backward()
         pass
 
-    def _compute_malliavin_grad(self, loss_values, malliavian_weights):
-        #malliavian_weights are (num_samples, coeff_count, time_steps)
-        return (loss_values[:,None, None] * malliavian_weights).mean(axis = 0)
+    def _compute_malliavin_grad(self, loss_values, malliavin_weights):
+        #malliavin_weights are (num_samples, coeff_count, time_steps)
+        return (loss_values[:,None, None] * malliavin_weights).mean(axis = 0)
 
     def compute_FRR_gradient(
         self,
         potential_obj: "Potential",
         potential_tensor: PotentialTensor,
         microstate_paths: MicrostatePaths,
-        malliavian_weights: MalliavinWeight,
+        malliavin_weights: MalliavinWeight,
         protocol_tensor: ControlSignal,
         dt: float
     ) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -57,12 +57,14 @@ class Loss(ABC):
             potential_obj: The potential object.
             potential_tensor: Recorded potential values.
             microstate_paths: Recorded microstate paths.
-            malliavian_weights: Computed Malliavin weights for gradient estimation.
+            malliavin_weights: Computed Malliavin weights for gradient estimation.
             protocol_tensor: The current control signals from the protocol.
             dt: Time step.
 
         Returns:
-            A tuple (total_loss, per_path_loss).
+            A tuple (total_loss, per_path_loss) where:
+            - total_loss: Contains the Malliavin weight term (connected to the graph) for differentiation.
+            - per_path_loss: The detached raw metric for reporting.
         """
         pos_tensor_detached = microstate_paths[..., 0].detach()
         # recompute to freeze the secondary reliance on the protocol through the trajectories
@@ -96,7 +98,8 @@ class Loss(ABC):
 
         # Make sure the eventual backwards goes back through to the control signals and trainable params only
         # Sum over (Control_Dim, Time)
-        frr_term = (malliavian_weights.detach() * protocol_tensor).sum(dim=(-2, -1))
+        frr_term = (malliavin_weights.detach() * protocol_tensor).sum(dim=(-2, -1))
         surrogate_grad_scalar = (loss_values_for_scoring * frr_term).mean()
 
         return direct_grad_scalar + surrogate_grad_scalar, loss_values_for_scoring
+    

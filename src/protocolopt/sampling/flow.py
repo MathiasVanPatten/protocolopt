@@ -5,7 +5,7 @@ import pyro.distributions.transforms as T
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Optional
 from ..core.potential import Potential
 from ..core.protocol import Protocol
 from ..core.loss import Loss
@@ -13,15 +13,67 @@ from ..core.loss import Loss
 class ConditionalFlow(McmcNuts, nn.Module):
     """Initial condition generator using a Conditional Normalizing Flow trained on MCMC samples."""
 
-    def __init__(self, params: Dict[str, Any], device: torch.device) -> None:
+    def __init__(
+        self,
+        dt: float,
+        gamma: float,
+        mass: float,
+        device: torch.device,
+        spatial_dimensions: int = 1,
+        time_steps: int = 1000,
+        beta: float = 1.0,
+        starting_bounds: Optional[torch.Tensor] = None,
+        samples_per_well: Optional[int] = None,
+        num_samples: int = 5000,
+        chains_per_well: int = 1,
+        warmup_ratio: float = 0.1,
+        min_neff: Optional[float] = None,
+        run_every_epoch: bool = False,
+        flow_layers: int = 4,
+        flow_epochs: int = 300,
+        flow_batch_size: int = 256,
+        flow_training_samples_per_well: int = 500
+    ) -> None:
         """Initializes the ConditionalFlow generator.
 
         Args:
-            params: Configuration dictionary.
-            device: Torch device.
+            dt (float): Time step.
+            gamma (float): Friction coefficient.
+            mass (float): Particle mass.
+            device (torch.device): Torch device.
+            spatial_dimensions (int): Number of spatial dimensions.
+            time_steps (int): Number of time steps.
+            beta (float): 1/kT
+            starting_bounds (Optional[torch.Tensor]): Bounds for starting positions. Defaults to global bounds if None.
+            samples_per_well (int): Samples per well.
+            num_samples (int): Total samples if not per well.
+            chains_per_well (int): Chains per well.
+            warmup_ratio (float): Ratio of warmup steps.
+            min_neff (float): Minimum effective sample size.
+            run_every_epoch (bool): Whether to run sampling every epoch.
+            flow_layers (int): Number of flow layers.
+            flow_epochs (int): Number of training epochs for the flow.
+            flow_batch_size (int): Batch size for flow training.
+            flow_training_samples_per_well (int): Samples per well for training the flow.
         """
         nn.Module.__init__(self)
-        super().__init__(params, device)
+        super().__init__(
+            dt=dt,
+            gamma=gamma,
+            mass=mass,
+            device=device,
+            spatial_dimensions=spatial_dimensions,
+            time_steps=time_steps,
+            beta=beta,
+            starting_bounds=starting_bounds,
+            samples_per_well=samples_per_well,
+            num_samples=num_samples,
+            chains_per_well=chains_per_well,
+            warmup_ratio=warmup_ratio,
+            min_neff=min_neff,
+            run_every_epoch=run_every_epoch
+        )
+        
         if self.spatial_dimensions > 8:
             print('WARNING: when spatial dimensions are greater than 8 the number of samples is forced to 8 * samples_per_well and is taken randomly from the global bounds. You are NOT guaranteed to have samples from each well each epoch nor the normalizing flow to properly learn the entire bitstring space.')
             self.force_random = True
@@ -30,10 +82,9 @@ class ConditionalFlow(McmcNuts, nn.Module):
 
         self.context_dim = self.spatial_dimensions
 
-        self.original_bounds = self.mcmc_starting_spatial_bounds.clone()
+        self.original_bounds = self.starting_bounds.clone()
 
         transforms = []
-        flow_layers = params.get('flow_layers', 4)
         if flow_layers < 2:
             raise ValueError("Flow layers must be at least 2 and at least 4 is highly recommended")
         for _ in range(flow_layers):
@@ -59,10 +110,19 @@ class ConditionalFlow(McmcNuts, nn.Module):
         self.register_buffer('data_mean', torch.zeros(self.spatial_dimensions))
         self.register_buffer('data_std', torch.ones(self.spatial_dimensions))
 
-        self.flow_epochs = params.get('flow_epochs', 300)
-        self.flow_batch_size = params.get('flow_batch_size', 256)
+        self.flow_epochs = flow_epochs
+        self.flow_batch_size = flow_batch_size
         self.flow_training_well_count = 2**self.spatial_dimensions
-        self.flow_training_samples_per_well = params.get('flow_training_samples_per_well', 500)
+        self.flow_training_samples_per_well = flow_training_samples_per_well
+
+        self.hparams.update({
+            'force_random': self.force_random,
+            'context_dim': self.context_dim,
+            'flow_epochs': self.flow_epochs,
+            'flow_batch_size': self.flow_batch_size,
+            'flow_training_well_count': self.flow_training_well_count,
+            'flow_training_samples_per_well': self.flow_training_samples_per_well
+        })
 
     def set_bounds_from_bits(self, target_bitstring: torch.Tensor, loss: Loss) -> None:
         """Updates sampling bounds to target a specific bitstring well.
@@ -92,7 +152,7 @@ class ConditionalFlow(McmcNuts, nn.Module):
                 raise ValueError(f"Bit must be 0 or 1, got {bit}")
 
         # update the bounds used by the parent class
-        self.mcmc_starting_spatial_bounds = torch.tensor(new_bounds, device=self.device)
+        self.starting_bounds = torch.tensor(new_bounds, device=self.device)
 
         # runs the parent class in global mode on this subset, basically redoing the per well logic but packed in a way the flow model needs to learn from
         self.samples_per_well = None
@@ -103,14 +163,14 @@ class ConditionalFlow(McmcNuts, nn.Module):
 
         # save the original number of samples and bounds
         original_samples_per_well = self.samples_per_well
-        original_bounds_backup = self.mcmc_starting_spatial_bounds.clone()
-        original_mcmc_num_samples = self.mcmc_num_samples
+        original_bounds_backup = self.starting_bounds.clone()
+        original_num_samples = self.num_samples
 
         # Set parameters for training data generation
         # We use the user-specified flow_training_samples_per_well
         # Note: _run_multichain_mcmc uses mcmc_num_samples internally when samples_per_well is None
         # But here we are simulating "global" sampling for specific wells by setting bounds manually
-        self.mcmc_num_samples = self.flow_training_samples_per_well * self.mcmc_chains_per_well
+        self.num_samples = self.flow_training_samples_per_well * self.chains_per_well
 
         try:
             all_samples = []
@@ -189,8 +249,8 @@ class ConditionalFlow(McmcNuts, nn.Module):
         finally:
             # restore the original number of samples and bounds
             self.samples_per_well = original_samples_per_well
-            self.mcmc_starting_spatial_bounds = original_bounds_backup
-            self.mcmc_num_samples = original_mcmc_num_samples
+            self.starting_bounds = original_bounds_backup
+            self.num_samples = original_num_samples
 
     def generate_initial_conditions(self, potential: Potential, protocol: Protocol, loss: Loss) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Generates initial conditions using the trained flow model.
@@ -208,7 +268,7 @@ class ConditionalFlow(McmcNuts, nn.Module):
 
         if self.samples_per_well is not None and not self.force_random: # per well mode, makes sure to sample from each well a known number of times
 
-            total_samples_per_well = self.samples_per_well * self.mcmc_chains_per_well
+            total_samples_per_well = self.samples_per_well * self.chains_per_well
 
             num_wells = 2 ** self.spatial_dimensions
             indices = torch.arange(num_wells, device=self.device)
@@ -222,7 +282,7 @@ class ConditionalFlow(McmcNuts, nn.Module):
             if self.samples_per_well is not None: #per random force
                 batch_size = 16 * self.samples_per_well
             else:
-                batch_size = self.mcmc_num_samples
+                batch_size = self.num_samples
             context = torch.randint(0, 2, (batch_size, self.spatial_dimensions), device=self.device).float()
 
 
@@ -240,14 +300,14 @@ class ConditionalFlow(McmcNuts, nn.Module):
             # weights = weights / weights.sum()
 
         #manipulate the parent class to make sure we get the right number of samples for velocity and noise
-        original_num_samples = self.mcmc_num_samples
-        self.mcmc_num_samples = batch_size
+        original_num_samples = self.num_samples
+        self.num_samples = batch_size
 
         initial_vel = self._get_initial_velocities()
         noise = self._get_noise()
 
         # restore the original number of samples for the parent class
-        self.mcmc_num_samples = original_num_samples
+        self.num_samples = original_num_samples
 
 
         return initial_pos, initial_vel, noise

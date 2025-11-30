@@ -2,7 +2,6 @@
 import torch
 from tqdm import tqdm
 from typing import Dict, Any, List, Optional, Union
-from .config import ProtocolOptimizerConfig
 from ..utils import logger
 from .potential import Potential
 from .simulator import Simulator
@@ -21,8 +20,15 @@ class ProtocolOptimizer:
         loss: Loss,
         protocol: Protocol,
         initial_condition_generator: InitialConditionGenerator,
-        params: Union[ProtocolOptimizerConfig, Dict[str, Any]],
-        callbacks: List[Callback] = []
+        callbacks: List[Callback] = [],
+        epochs: int = 100,
+        learning_rate: float = 0.001,
+        grad_clip_max_norm: float = 1.0,
+        optimizer_class: Any = torch.optim.Adam,
+        optimizer_kwargs: Dict[str, Any] = {},
+        scheduler_class: Any = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts,
+        scheduler_kwargs: Dict[str, Any] = {},
+        scheduler_restart_decay: float = 1.0
     ) -> None:
         """Initializes the ProtocolOptimizer.
 
@@ -32,62 +38,58 @@ class ProtocolOptimizer:
             loss: The loss function to minimize.
             protocol: The time-dependent protocol model.
             initial_condition_generator: Generator for starting states.
-            params: Configuration parameters. Can be a dict or ProtocolOptimizerConfig object.
             callbacks: List of callbacks to run during training.
+            epochs: Number of training epochs.
+            learning_rate: Learning rate for the optimizer.
+            grad_clip_max_norm: Maximum norm for gradient clipping.
+            optimizer_class: The optimizer class to use.
+            optimizer_kwargs: Additional arguments for the optimizer.
+            scheduler_class: The scheduler class to use.
+            scheduler_kwargs: Additional arguments for the scheduler. If CosineAnnealingWarmRestarts 
+                is used and T_0 is not specified, it defaults to epochs.
+            scheduler_restart_decay: Decay factor for peak LR on restarts (only for 
+                CosineAnnealingWarmRestarts). Defaults to 1.0 (no decay). LR multiplied by this 
+                factor on each restart.
         """
         self.potential = potential
         self.simulator = simulator
         self.loss = loss
         self.protocol = protocol
         self.init_cond_generator = initial_condition_generator
-        self.device = getattr(self.protocol, 'device', torch.device('cpu'))
         self.callbacks = callbacks
-
-        if isinstance(params, dict):
-            self.config = ProtocolOptimizerConfig.from_dict(params)
-        else:
-            self.config = params
-
-        self.spatial_dimensions = self.config.spatial_dimensions
-        self.time_steps = self.config.time_steps
-        self.epochs = self.config.epochs
-        self.learning_rate = self.config.learning_rate
-        self.beta = self.config.beta
-        self.grad_clip_max_norm = self.config.grad_clip_max_norm
-
-        # Simulator params override config if present in simulator
-        self.gamma = getattr(self.simulator, 'gamma', self.config.gamma)
-        self.dt = getattr(self.simulator, 'dt', self.config.dt)
-        if self.dt is None:
-             self.dt = 1.0 / self.time_steps
-
-        self.noise_sigma = torch.sqrt(torch.tensor(2 * self.gamma / self.beta))
-
-        if self.protocol.fixed_starting:
-            self.init_cond_generator.generate_initial_conditions(self.potential, self.protocol, self.loss)
+        self.device = getattr(self.protocol, 'device', torch.device('cpu'))
+        
+        self.epochs = epochs
+        self.learning_rate = learning_rate
+        self.grad_clip_max_norm = grad_clip_max_norm
+        self.optimizer_class = optimizer_class
+        self.optimizer_kwargs = optimizer_kwargs
+        self.scheduler_class = scheduler_class
+        self.scheduler_kwargs = scheduler_kwargs
+        self.scheduler_restart_decay = scheduler_restart_decay
+        self.optimizer = None
+        self.scheduler = None
 
     def simulate(
         self,
-        manual_inital_pos: Optional[torch.Tensor] = None,
+        manual_initial_pos: Optional[torch.Tensor] = None,
         manual_initial_vel: Optional[torch.Tensor] = None,
-        manual_noise: Optional[torch.Tensor] = None,
-        debug_print: bool = False
+        manual_noise: Optional[torch.Tensor] = None
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Runs a single simulation batch.
 
         Args:
-            manual_inital_pos: Optional override for initial positions.
+            manual_initial_pos: Optional override for initial positions.
             manual_initial_vel: Optional override for initial velocities.
             manual_noise: Optional override for noise.
-            debug_print: Whether to print debug info from simulator.
 
         Returns:
-            A tuple of (microstate_paths, potential_val, malliavian_weight, protocol_tensor).
+            A tuple of (microstate_paths, potential_val, malliavin_weight, protocol_tensor).
         """
         initial_pos, initial_vel, noise = self.init_cond_generator.generate_initial_conditions(self.potential, self.protocol, self.loss)
 
-        if manual_inital_pos is not None:
-            initial_pos = manual_inital_pos
+        if manual_initial_pos is not None:
+            initial_pos = manual_initial_pos
         if manual_initial_vel is not None:
             initial_vel = manual_initial_vel
         if manual_noise is not None:
@@ -95,24 +97,34 @@ class ProtocolOptimizer:
 
         protocol_tensor = self.protocol.get_protocol_tensor()
 
-        microstate_paths, potential_val, malliavian_weight = self.simulator.make_microstate_paths(
+        microstate_paths, potential_val, malliavin_weight = self.simulator.make_microstate_paths(
             self.potential,
             initial_pos,
             initial_vel,
-            self.time_steps,
+            self.protocol.time_steps,
             noise,
-            self.noise_sigma,
-            protocol_tensor,
-            debug_print = debug_print
+            protocol_tensor
         )
 
-        return microstate_paths, potential_val, malliavian_weight, protocol_tensor
+        return microstate_paths, potential_val, malliavin_weight, protocol_tensor
 
-    def _setup_optimizer(self, optimizer_class = torch.optim.Adam):
-        self.optimizer = optimizer_class(self.protocol.trainable_params(), lr=self.learning_rate)
+    def _setup_optimizer(self):
+        self.optimizer = self.optimizer_class(self.protocol.trainable_params(), lr=self.learning_rate, **self.optimizer_kwargs)
+        
+        if self.scheduler_class is not None:
+            if self.scheduler_class == torch.optim.lr_scheduler.CosineAnnealingWarmRestarts:
+                if 'T_0' not in self.scheduler_kwargs:
+                    self.scheduler_kwargs['T_0'] = self.epochs
+            
+            self.scheduler = self.scheduler_class(self.optimizer, **self.scheduler_kwargs)
+        else:
+            self.scheduler = None
 
     def train(self) -> None:
-        """Runs the training loop."""
+        """Runs the training loop.
+
+        Mutates the `protocol` object in-place.
+        """
         self._setup_optimizer()
 
         for callback in self.callbacks:
@@ -126,11 +138,15 @@ class ProtocolOptimizer:
 
                 self.optimizer.zero_grad()
 
-                microstate_paths, potential_val, malliavian_weight, protocol_tensor = self.simulate()
+                microstate_paths, potential_val, malliavin_weight, protocol_tensor = self.simulate()
+
+                dt = getattr(self.simulator, 'dt', None)
+                if dt is None:
+                    dt = 1.0 / self.protocol.time_steps
 
                 total_loss, per_traj_loss = self.loss.compute_FRR_gradient( self.potential,
-                    potential_val, microstate_paths, malliavian_weight,
-                    protocol_tensor, self.dt
+                    potential_val, microstate_paths, malliavin_weight,
+                    protocol_tensor, dt
                 )
 
                 total_loss.backward()
@@ -139,26 +155,30 @@ class ProtocolOptimizer:
                     torch.nn.utils.clip_grad_norm_(self.protocol.trainable_params(), self.grad_clip_max_norm)
 
                 self.optimizer.step()
+                
+                if self.scheduler is not None:
+                    self.scheduler.step()
+                    
+                    if (self.scheduler_restart_decay < 1.0 and 
+                        isinstance(self.scheduler, torch.optim.lr_scheduler.CosineAnnealingWarmRestarts)):
+                        if self.scheduler.T_cur == 0:
+                            for param_group in self.optimizer.param_groups:
+                                param_group['lr'] *= self.scheduler_restart_decay
+                            self.scheduler.base_lrs = [pg['lr'] for pg in self.optimizer.param_groups]
 
                 pbar.set_postfix({'loss': total_loss.item()})
 
                 sim_dict_detached = {
                     'microstate_paths': microstate_paths.detach(),
                     'potential': potential_val.detach(),
-                    'malliavian_weight': malliavian_weight.detach(),
+                    'malliavin_weight': malliavin_weight.detach(),
                     'protocol_tensor': protocol_tensor.detach()
                 }
 
                 for callback in self.callbacks:
                     callback.on_epoch_end(self, sim_dict_detached, per_traj_loss, epoch)
 
-        # Reconstruct sim_dict for train_end callback
-        sim_dict = {
-            'microstate_paths': microstate_paths,
-            'potential': potential_val,
-            'malliavian_weight': malliavian_weight
-        }
         for callback in self.callbacks:
-            callback.on_train_end(self, sim_dict, protocol_tensor, epoch)
+            callback.on_train_end(self, sim_dict_detached, protocol_tensor, epoch)
 
         logger.info('Training complete')

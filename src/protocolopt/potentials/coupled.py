@@ -1,6 +1,6 @@
 from ..core.potential import Potential
 from ..core.types import StateSpace, ControlVector
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Dict, Any
 import torch
 
 class GeneralCoupledPotential(Potential):
@@ -27,6 +27,14 @@ class GeneralCoupledPotential(Potential):
             self.has_mix = False
 
         self.triu_indices = torch.triu_indices(row=spatial_dimensions, col=spatial_dimensions, offset=1)
+
+        self.hparams = {
+            'spatial_dim': self.spatial_dim,
+            'has_c': self.has_c,
+            'has_mix': self.has_mix,
+            'compile_mode': self.compile_mode,
+            'name': self.__class__.__name__
+        }
 
     def potential_value(self, space_grid: StateSpace, protocol_tensor: ControlVector) -> torch.Tensor:
         """Computes the coupled potential value.
