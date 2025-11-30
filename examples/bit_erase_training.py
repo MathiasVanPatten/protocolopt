@@ -5,7 +5,7 @@ from protocolopt.protocols import LinearPiecewise
 from protocolopt.simulators import EulerMaruyama
 from protocolopt.losses import StandardLogicGateLoss
 from protocolopt import ProtocolOptimizer
-from protocolopt.sampling import LaplaceApproximation
+from protocolopt.sampling import LaplaceApproximation, McmcNuts
 from protocolopt.callbacks import TrajectoryPlotCallback, ConfusionMatrixCallback, PotentialLandscapePlotCallback, ProtocolPlotCallback
 try:
     from protocolopt.callbacks import AimCallback
@@ -30,6 +30,7 @@ time_steps = 1000 #overdamped
 dt = 1/time_steps
 gamma = 1.0
 beta = 1.0
+mass = 1.0
 
 # Protocol parameters
 num_coefficients = 16
@@ -124,22 +125,6 @@ loss = StandardLogicGateLoss(
     exponent=2
 )
 
-# Build params dictionary for ProtocolOptimizer
-params = {
-    'spatial_dimensions': spatial_dimensions,
-    'time_steps': time_steps,
-    'samples_per_well': samples_per_well,
-    'mcmc_warmup_ratio': mcmc_warmup_ratio,
-    'mcmc_starting_spatial_bounds': mcmc_starting_spatial_bounds,
-    'mcmc_chains_per_well': 1,
-    'beta': beta,
-    'epochs': training_iterations,
-    'learning_rate': learning_rate,
-    'dt': dt,
-    'gamma': gamma,
-    'mass': 1.0 # default mass
-}
-
 # Create callbacks
 callbacks = []
 
@@ -178,11 +163,32 @@ if AIM_AVAILABLE:
     )
     callbacks.append(aim_callback)
 
-# init_cond_generator = McmcNuts(params, device)
+# init_cond_generator = McmcNuts(
+#     dt=dt,
+#     gamma=gamma,
+#     mass=mass,
+#     device=device,
+#     spatial_dimensions=spatial_dimensions,
+#     time_steps=time_steps,
+#     beta=beta,
+#     starting_bounds=mcmc_starting_spatial_bounds,
+#     samples_per_well=samples_per_well,
+#     chains_per_well=1,
+#     warmup_ratio=mcmc_warmup_ratio
+# )
+
+num_samples = samples_per_well * (2**spatial_dimensions)
+
 init_cond_generator = LaplaceApproximation(
-    params=params,
+    dt=dt,
+    gamma=gamma,
+    mass=mass,
     centers=bit_locations,
-    device=device
+    device=device,
+    beta=beta,
+    spatial_dimensions=spatial_dimensions,
+    time_steps=time_steps,
+    num_samples=num_samples
 )
 
 # Instantiate ProtocolOptimizer
@@ -194,7 +200,9 @@ simulation = ProtocolOptimizer(
     initial_condition_generator=init_cond_generator,
     epochs=training_iterations,
     learning_rate=learning_rate,
-    callbacks=callbacks
+    callbacks=callbacks,
+    scheduler_kwargs={'T_0': training_iterations // 5},
+    scheduler_restart_decay=0.75
 )
 
 if __name__ == '__main__':

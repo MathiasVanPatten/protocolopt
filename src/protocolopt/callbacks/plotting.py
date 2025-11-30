@@ -1,7 +1,7 @@
 import torch
 import matplotlib.pyplot as plt
 from pathlib import Path
-from ..core.callback import Callback
+from ..core.callback import BasePlottingCallback
 import numpy as np
 from matplotlib.colors import ListedColormap
 from typing import Optional, Dict, Any, TYPE_CHECKING
@@ -11,25 +11,6 @@ if TYPE_CHECKING:
     from ..core.protocol_optimizer import ProtocolOptimizer
 
 plt.ioff()
-
-
-class BasePlottingCallback(Callback):
-    """Base callback for plotting that handles saving or logging figures"""
-    
-    def _log_or_save_figure(self, fig: plt.Figure, name: str, epoch: int, optimizer_object: "ProtocolOptimizer", context: Dict[str, Any] = {}, dpi: int = 150) -> None:
-        """Log figure to Aim if available, otherwise save to disk"""
-        aim_callback = next((cb for cb in optimizer_object.callbacks
-                            if type(cb).__name__ == 'AimCallback'), None)
-        
-        if aim_callback and hasattr(aim_callback, 'track_figure'):
-            aim_callback.track_figure(fig, name, epoch, context=context, dpi=dpi)
-        else:
-            # Assumes self.save_dir is set by subclass
-            if not hasattr(self, 'save_dir'):
-                 raise AttributeError(f"{self.__class__.__name__} must define save_dir to use _log_or_save_figure locally")
-            
-            filepath = self.save_dir / f'{name}_epoch_{epoch:04d}.png'
-            fig.savefig(filepath, dpi=dpi)
 
 
 class TrajectoryPlotCallback(BasePlottingCallback):
@@ -48,24 +29,10 @@ class TrajectoryPlotCallback(BasePlottingCallback):
         self.num_trajectories = num_trajectories
         self.total_epochs = None
     
-    def on_train_start(self, optimizer_object: "ProtocolOptimizer") -> None:
-        self.total_epochs = optimizer_object.epochs
-    
-    def on_epoch_end(self, optimizer_object: "ProtocolOptimizer", sim_dict: Dict[str, Any], loss_values: torch.Tensor, epoch: int) -> None:
-        should_plot = False
-        if self.plot_frequency is not None:
-            should_plot = (epoch % self.plot_frequency == 0) or (epoch == self.total_epochs - 1)
-        else:
-            if self.total_epochs is not None:
-                div = max(1, self.total_epochs // 4)
-                should_plot = (epoch % div == 0) or (epoch == self.total_epochs - 1)
-        
-        if not should_plot:
-            return
-        
-        time_steps = optimizer_object.time_steps
+    def _plot(self, optimizer_object: "ProtocolOptimizer", sim_dict: Dict[str, Any], epoch: int) -> None:
+        time_steps = optimizer_object.protocol.time_steps
         microstate_paths: MicrostatePaths = sim_dict['microstate_paths']
-        spatial_dimensions = optimizer_object.spatial_dimensions
+        spatial_dimensions = optimizer_object.init_cond_generator.spatial_dimensions
         
         # Choose random path indices
         num_paths = microstate_paths.shape[0]
@@ -99,22 +66,7 @@ class ConfusionMatrixCallback(BasePlottingCallback):
         self.plot_frequency = plot_frequency
         self.total_epochs = None
     
-    def on_train_start(self, optimizer_object: "ProtocolOptimizer") -> None:
-        self.total_epochs = optimizer_object.epochs
-    
-    def on_epoch_end(self, optimizer_object: "ProtocolOptimizer", sim_dict: Dict[str, Any], loss_values: torch.Tensor, epoch: int) -> None:
-        # Determine if we should plot this epoch
-        should_plot = False
-        if self.plot_frequency is not None:
-            should_plot = (epoch % self.plot_frequency == 0) or (epoch == self.total_epochs - 1)
-        else:
-            if self.total_epochs is not None:
-                div = max(1, self.total_epochs // 4)
-                should_plot = (epoch % div == 0) or (epoch == self.total_epochs - 1)
-        
-        if not should_plot:
-            return
-        
+    def _plot(self, optimizer_object: "ProtocolOptimizer", sim_dict: Dict[str, Any], epoch: int) -> None:
         # Get the loss object
         loss_object = optimizer_object.loss
         
@@ -198,28 +150,14 @@ class PotentialLandscapePlotCallback(BasePlottingCallback):
         self.trajectories_per_bit = trajectories_per_bit
         self.total_epochs = None
     
-    def on_train_start(self, optimizer_object: "ProtocolOptimizer") -> None:
-        self.total_epochs = optimizer_object.epochs
-    
-    def on_epoch_end(self, optimizer_object: "ProtocolOptimizer", sim_dict: Dict[str, Any], loss_values: torch.Tensor, epoch: int) -> None:
-        should_plot = False
-        if self.plot_frequency is not None:
-            should_plot = (epoch % self.plot_frequency == 0) or (epoch == self.total_epochs - 1)
-        else:
-            if self.total_epochs is not None:
-                div = max(1, self.total_epochs // 4)
-                should_plot = (epoch % div == 0) or (epoch == self.total_epochs - 1)
-        
-        if not should_plot:
-            return
-        
+    def _plot(self, optimizer_object: "ProtocolOptimizer", sim_dict: Dict[str, Any], epoch: int) -> None:
         protocol_tensor = sim_dict.get('protocol_tensor', None)
         if protocol_tensor is None:
             return
         
         microstate_paths: MicrostatePaths = sim_dict['microstate_paths']
-        spatial_dimensions = optimizer_object.spatial_dimensions
-        time_steps = optimizer_object.time_steps
+        spatial_dimensions = optimizer_object.init_cond_generator.spatial_dimensions
+        time_steps = optimizer_object.protocol.time_steps
         spatial_bounds = getattr(optimizer_object.init_cond_generator, 'mcmc_starting_spatial_bounds', None)
         if spatial_bounds is None:
             min_vals = microstate_paths[..., 0].min(dim=0)[0].min(dim=1)[0]
@@ -315,21 +253,7 @@ class ProtocolPlotCallback(BasePlottingCallback):
         self.plot_frequency = plot_frequency
         self.total_epochs = None
     
-    def on_train_start(self, optimizer_object: "ProtocolOptimizer") -> None:
-        self.total_epochs = optimizer_object.epochs
-    
-    def on_epoch_end(self, optimizer_object: "ProtocolOptimizer", sim_dict: Dict[str, Any], loss_values: torch.Tensor, epoch: int) -> None:
-        should_plot = False
-        if self.plot_frequency is not None:
-            should_plot = (epoch % self.plot_frequency == 0) or (epoch == self.total_epochs - 1)
-        else:
-            if self.total_epochs is not None:
-                div = max(1, self.total_epochs // 4)
-                should_plot = (epoch % div == 0) or (epoch == self.total_epochs - 1)
-        
-        if not should_plot:
-            return
-        
+    def _plot(self, optimizer_object: "ProtocolOptimizer", sim_dict: Dict[str, Any], epoch: int) -> None:
         protocol_tensor = sim_dict.get('protocol_tensor', None)
         if protocol_tensor is None:
             return
@@ -360,5 +284,68 @@ class ProtocolPlotCallback(BasePlottingCallback):
             axes[idx].set_visible(False)
         
         plt.tight_layout()
-        self._log_or_save_figure(fig, 'coefficient_evolution', epoch, optimizer_object)
+        self._log_or_save_figure(fig, 'protocol_control_time_evolution', epoch, optimizer_object)
+        plt.close(fig)
+
+class InfluenceHeatmapCallback(BasePlottingCallback):
+    """
+    Visualizes the Information Ripple: How much does Bit i depend on Bit i-1 over time?
+    """
+    def __init__(self, save_dir: str = 'figs', plot_frequency: Optional[int] = None):
+        self.save_dir = Path(save_dir)
+        self.save_dir.mkdir(parents=True, exist_ok=True)
+        self.plot_frequency = plot_frequency
+        self.total_epochs: Optional[int] = None
+
+    def _plot(self, optimizer_object: "ProtocolOptimizer", sim_dict: Dict[str, Any], epoch: int) -> None:
+        microstate_paths: MicrostatePaths = sim_dict['microstate_paths']
+        batch_size, dims, time_steps, _ = microstate_paths.shape
+        
+        if dims < 2: return 
+
+        midpoints = optimizer_object.loss.midpoints # Shape: (Spatial_Dims,)
+            
+        start_positions = sim_dict['microstate_paths'][:, :, 0, 0] # (Batch, Dims)
+        
+        binary_starts = (start_positions > midpoints).float() 
+
+        logic_map = torch.zeros(2 * (dims - 1), time_steps, device=microstate_paths.device)
+        y_labels = []
+
+        for i in range(1, dims):
+            prev_bit = i - 1
+            
+            mask_1 = (binary_starts[:, prev_bit] == 1.0)
+            mask_0 = (binary_starts[:, prev_bit] == 0.0)
+            
+            if mask_0.sum() > 0:
+                mean_path_0 = microstate_paths[mask_0, i, :, 0].mean(dim=0)
+                logic_map[2*(i-1)] = mean_path_0
+            y_labels.append(f'Bit {i} | Prev=0')
+            
+            if mask_1.sum() > 0:
+                mean_path_1 = microstate_paths[mask_1, i, :, 0].mean(dim=0)
+                logic_map[2*(i-1) + 1] = mean_path_1
+            y_labels.append(f'Bit {i} | Prev=1')
+
+        logic_map = logic_map.cpu().numpy()
+        
+        limit = np.abs(logic_map).max()
+        
+        fig, ax = plt.subplots(figsize=(12, 0.8 * len(y_labels) + 2))
+        im = ax.imshow(logic_map, aspect='auto', origin='lower', 
+                       cmap='seismic', vmin=-limit, vmax=limit)
+        
+        plt.colorbar(im, ax=ax, label='Mean Position (Blue=0, Red=1)')
+        
+        for y in range(0, len(y_labels), 2):
+            ax.axhline(y - 0.5, color='black', linewidth=2)
+            
+        ax.set_yticks(range(len(y_labels)))
+        ax.set_yticklabels(y_labels)
+        ax.set_xlabel('Time Steps')
+        ax.set_title(f'Logic Flow Analysis (Epoch {epoch})')
+        
+        plt.tight_layout()
+        self._log_or_save_figure(fig, 'influence_ripple', epoch, optimizer_object)
         plt.close(fig)

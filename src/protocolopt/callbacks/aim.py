@@ -37,6 +37,15 @@ class AimCallback(Callback):
         self.run_hash = run_hash
         self.run = None
 
+    def _sanitize_value(self, value: Any) -> Any:
+        if isinstance(value, torch.Tensor):
+            return value.item() if value.numel() == 1 else value.tolist()
+        elif isinstance(value, dict):
+            return {k: self._sanitize_value(v) for k, v in value.items()}
+        elif isinstance(value, (list, tuple)):
+            return [self._sanitize_value(v) for v in value]
+        return value
+
     def on_train_start(self, optimizer: "ProtocolOptimizer") -> None:
         self.run = Run(
             repo=self.repo_path,
@@ -47,22 +56,35 @@ class AimCallback(Callback):
         )
 
         config = {}
+
         components = {
             'optimizer': optimizer,
             'potential': optimizer.potential,
             'simulator': optimizer.simulator,
             'loss': optimizer.loss,
             'protocol': optimizer.protocol,
-            'initial_condition_generator': optimizer.initial_condition_generator,
+            'initial_condition_generator': optimizer.init_cond_generator,
         }
 
         for name, comp in components.items():
             if hasattr(comp, 'hparams'):
-                config[name] = comp.hparams
+                config[name] = self._sanitize_value(comp.hparams)
             elif hasattr(comp, '__dict__'):
-                config[name] = {k: v for k, v in comp.__dict__.items() 
-                              if isinstance(v, (int, float, str, bool))}
+                config[name] = {k: self._sanitize_value(v) for k, v in comp.__dict__.items() 
+                              if isinstance(v, (int, float, str, bool, torch.Tensor))}
         
+        def get_class_name(obj):
+            if isinstance(obj, type):
+                return obj.__name__
+            return obj.__class__.__name__
+            
+        config['optimizer'] = config['optimizer'] | {
+            'optimizer': get_class_name(optimizer.optimizer_class),
+            'optimizer_kwargs': self._sanitize_value(optimizer.optimizer_kwargs),
+            'scheduler': get_class_name(optimizer.scheduler_class) if optimizer.scheduler_class else None,
+            'scheduler_kwargs': self._sanitize_value(optimizer.scheduler_kwargs),
+            'scheduler_restart_decay': optimizer.scheduler_restart_decay
+        }
         self.run['hparams'] = config
 
     def on_epoch_end(self, optimizer: "ProtocolOptimizer", sim_dict: Dict[str, Any], 
@@ -78,11 +100,11 @@ class AimCallback(Callback):
                 sim_dict['potential'], 
                 sim_dict['microstate_paths'],
                 sim_dict['protocol_tensor'], 
-                optimizer.dt
+                optimizer.simulator.dt
             )
             
             for metric_name, value in metrics.items():
-                val = value.item() if isinstance(value, torch.Tensor) else value
+                val = value.mean().item() if isinstance(value, torch.Tensor) else value
                 
                 ctx = {'group': 'loss_components'} if 'loss' in metric_name else {'group': 'metrics'}
                 

@@ -1,6 +1,6 @@
 import torch
 from abc import ABC, abstractmethod
-from typing import Tuple, Dict, Any
+from typing import Tuple, Dict, Any, TYPE_CHECKING
 from torch.func import vmap
 from .types import PotentialTensor, MicrostatePaths, ControlSignal, MalliavinWeight
 

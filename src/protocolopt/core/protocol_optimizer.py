@@ -23,7 +23,12 @@ class ProtocolOptimizer:
         callbacks: List[Callback] = [],
         epochs: int = 100,
         learning_rate: float = 0.001,
-        grad_clip_max_norm: float = 1.0
+        grad_clip_max_norm: float = 1.0,
+        optimizer_class: Any = torch.optim.Adam,
+        optimizer_kwargs: Dict[str, Any] = {},
+        scheduler_class: Any = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts,
+        scheduler_kwargs: Dict[str, Any] = {},
+        scheduler_restart_decay: float = 1.0
     ) -> None:
         """Initializes the ProtocolOptimizer.
 
@@ -37,6 +42,14 @@ class ProtocolOptimizer:
             epochs: Number of training epochs.
             learning_rate: Learning rate for the optimizer.
             grad_clip_max_norm: Maximum norm for gradient clipping.
+            optimizer_class: The optimizer class to use.
+            optimizer_kwargs: Additional arguments for the optimizer.
+            scheduler_class: The scheduler class to use.
+            scheduler_kwargs: Additional arguments for the scheduler. If CosineAnnealingWarmRestarts 
+                is used and T_0 is not specified, it defaults to epochs.
+            scheduler_restart_decay: Decay factor for peak LR on restarts (only for 
+                CosineAnnealingWarmRestarts). Defaults to 1.0 (no decay). LR multiplied by this 
+                factor on each restart.
         """
         self.potential = potential
         self.simulator = simulator
@@ -44,18 +57,24 @@ class ProtocolOptimizer:
         self.protocol = protocol
         self.init_cond_generator = initial_condition_generator
         self.callbacks = callbacks
-        # self.device = getattr(self.protocol, 'device', torch.device('cpu'))
+        self.device = getattr(self.protocol, 'device', torch.device('cpu'))
         
         self.epochs = epochs
         self.learning_rate = learning_rate
         self.grad_clip_max_norm = grad_clip_max_norm
+        self.optimizer_class = optimizer_class
+        self.optimizer_kwargs = optimizer_kwargs
+        self.scheduler_class = scheduler_class
+        self.scheduler_kwargs = scheduler_kwargs
+        self.scheduler_restart_decay = scheduler_restart_decay
+        self.optimizer = None
+        self.scheduler = None
 
     def simulate(
         self,
         manual_inital_pos: Optional[torch.Tensor] = None,
         manual_initial_vel: Optional[torch.Tensor] = None,
-        manual_noise: Optional[torch.Tensor] = None,
-        debug_print: bool = False
+        manual_noise: Optional[torch.Tensor] = None
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """Runs a single simulation batch.
 
@@ -85,14 +104,22 @@ class ProtocolOptimizer:
             initial_vel,
             self.protocol.time_steps,
             noise,
-            protocol_tensor,
-            debug_print = debug_print
+            protocol_tensor
         )
 
         return microstate_paths, potential_val, malliavian_weight, protocol_tensor
 
-    def _setup_optimizer(self, optimizer_class = torch.optim.Adam):
-        self.optimizer = optimizer_class(self.protocol.trainable_params(), lr=self.learning_rate)
+    def _setup_optimizer(self):
+        self.optimizer = self.optimizer_class(self.protocol.trainable_params(), lr=self.learning_rate, **self.optimizer_kwargs)
+        
+        if self.scheduler_class is not None:
+            if self.scheduler_class == torch.optim.lr_scheduler.CosineAnnealingWarmRestarts:
+                if 'T_0' not in self.scheduler_kwargs:
+                    self.scheduler_kwargs['T_0'] = self.epochs
+            
+            self.scheduler = self.scheduler_class(self.optimizer, **self.scheduler_kwargs)
+        else:
+            self.scheduler = None
 
     def train(self) -> None:
         """Runs the training loop."""
@@ -126,6 +153,16 @@ class ProtocolOptimizer:
                     torch.nn.utils.clip_grad_norm_(self.protocol.trainable_params(), self.grad_clip_max_norm)
 
                 self.optimizer.step()
+                
+                if self.scheduler is not None:
+                    self.scheduler.step()
+                    
+                    if (self.scheduler_restart_decay < 1.0 and 
+                        isinstance(self.scheduler, torch.optim.lr_scheduler.CosineAnnealingWarmRestarts)):
+                        if self.scheduler.T_cur == 0:
+                            for param_group in self.optimizer.param_groups:
+                                param_group['lr'] *= self.scheduler_restart_decay
+                            self.scheduler.base_lrs = [pg['lr'] for pg in self.optimizer.param_groups]
 
                 pbar.set_postfix({'loss': total_loss.item()})
 

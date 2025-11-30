@@ -71,7 +71,7 @@ class LogicGateEndpointLossBase(Loss):
             'exponent': self.exponent,
             'starting_bit_weights': self.starting_bit_weights.tolist() if self.starting_bit_weights is not None else None,
             'domain': self.domain,
-            'loss_type': self.__class__.__name__
+            'name': self.__class__.__name__
         }
 
     def _get_depth_of_truth_table(self, truth_table_dict):

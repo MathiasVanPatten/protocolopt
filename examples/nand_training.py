@@ -1,5 +1,6 @@
 import torch
 import math
+from protocolopt.callbacks.plotting import InfluenceHeatmapCallback
 from protocolopt.potentials import GeneralCoupledPotential
 from protocolopt.protocols import LinearPiecewise
 from protocolopt.simulators import EulerMaruyama
@@ -149,20 +150,6 @@ loss = StandardLogicGateLoss(
     starting_bit_weights=starting_bit_weights
 )
 
-# Build params dictionary for ProtocolOptimizer
-params = {
-    'spatial_dimensions': spatial_dimensions,
-    'time_steps': time_steps,
-    'samples_per_well': samples_per_well,
-    'beta': beta,
-    'epochs': training_iterations,
-    'learning_rate': learning_rate,
-    'dt': dt,
-    'gamma': gamma,
-    'mass': mass,
-    'num_samples': 5000
-}
-
 # Create callbacks
 callbacks = []
 
@@ -193,6 +180,12 @@ coefficient_callback = ProtocolPlotCallback(
 
 callbacks.append(coefficient_callback)
 
+# influence_ripple_callback = InfluenceHeatmapCallback(
+#     save_dir='figs',
+#     plot_frequency=None
+# )
+# callbacks.append(influence_ripple_callback)
+
 # IMPORTANT: AimCallback must be last
 # Add Aim callback if available
 if AIM_AVAILABLE:
@@ -202,10 +195,18 @@ if AIM_AVAILABLE:
     )
     callbacks.append(aim_callback)
 
+num_samples = 5000
+
 init_cond_generator = LaplaceApproximation(
-    params=params,
+    dt=dt,
+    gamma=gamma,
+    mass=mass,
     centers=bit_locations,
-    device=device
+    device=device,
+    beta=beta,
+    spatial_dimensions=spatial_dimensions,
+    time_steps=time_steps,
+    num_samples=num_samples
 )
 
 # Instantiate ProtocolOptimizer
@@ -217,7 +218,9 @@ simulation = ProtocolOptimizer(
     initial_condition_generator=init_cond_generator,
     epochs=training_iterations,
     learning_rate=learning_rate,
-    callbacks=callbacks
+    callbacks=callbacks,
+    scheduler_kwargs={'T_0': training_iterations // 5},
+    scheduler_restart_decay=0.75
 )
 
 if __name__ == '__main__':

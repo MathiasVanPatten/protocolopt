@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Tuple, Any
+from typing import Tuple, Any, TYPE_CHECKING
 import torch
 from .types import MicrostatePaths, PotentialTensor, MalliavinWeight, StateSpace, ControlSignal
 

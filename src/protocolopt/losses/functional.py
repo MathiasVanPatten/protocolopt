@@ -1,4 +1,3 @@
-#for simple losses that are stateless
 import torch
 from ..core.types import PotentialTensor, MicrostatePaths, ControlSignal
 

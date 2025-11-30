@@ -17,57 +17,80 @@ from typing import Optional, Dict, Any, List, Tuple
 class McmcNuts(InitialConditionGenerator):
     """Initial condition generator using MCMC with the NUTS sampler."""
 
-    def __init__(self, params: Dict[str, Any], device: torch.device) -> None:
+    def __init__(
+        self,
+        dt: float,
+        gamma: float,
+        mass: float,
+        device: torch.device,
+        spatial_dimensions: int = 1,
+        time_steps: int = 1000,
+        beta: float = 1.0,
+        starting_bounds: Optional[torch.Tensor] = None,
+        samples_per_well: Optional[int] = None,
+        num_samples: int = 5000,
+        chains_per_well: int = 1,
+        warmup_ratio: float = 0.1,
+        min_neff: Optional[float] = None,
+        run_every_epoch: bool = False
+    ) -> None:
         """Initializes McmcNuts.
 
         Args:
-            params: Configuration parameters including:
-                - spatial_dimensions (int): Number of spatial dimensions.
-                - time_steps (int): Number of time steps.
-                - mcmc_warmup_ratio (float): Ratio of warmup steps.
-                - mcmc_starting_spatial_bounds (torch.Tensor): Bounds for starting positions.
-                - mcmc_chains_per_well (int): Chains per well.
-                - min_neff (float): Minimum effective sample size.
-                - samples_per_well (int): Samples per well.
-                - mcmc_num_samples (int): Total samples if not per well.
-                - beta (float): Inverse temperature.
-                - gamma (float): Friction coefficient.
-                - dt (float): Time step.
-                - mass (float): Particle mass.
-                - run_every_epoch (bool): Whether to run sampling every epoch.
-            device: Calculation device.
+            dt (float): Time step.
+            gamma (float): Friction coefficient.
+            mass (float): Particle mass.
+            device (torch.device): Calculation device.
+            spatial_dimensions (int): Number of spatial dimensions.
+            time_steps (int): Number of time steps.
+            beta (float): 1/kT
+            starting_bounds (torch.Tensor): Bounds for starting positions.
+            samples_per_well (int): Samples per well.
+            num_samples (int): Total samples if not per well.
+            chains_per_well (int): Chains per well.
+            warmup_ratio (float): Ratio of warmup steps.
+            min_neff (float): Minimum effective sample size.
+            run_every_epoch (bool): Whether to run sampling every epoch.
         """
         self.device = device
-        self.spatial_dimensions: int = params.get('spatial_dimensions', 1)
-        self.time_steps: int = params.get('time_steps', 1000)
-        self.mcmc_warmup_ratio: float = params.get('mcmc_warmup_ratio', 0.1)
-        self.mcmc_starting_spatial_bounds: torch.Tensor = params.get('mcmc_starting_spatial_bounds', torch.tensor([[-5, 5]] * self.spatial_dimensions, device=self.device))
-        self.mcmc_chains_per_well: int = params.get('mcmc_chains_per_well', 1)
-        self.min_neff: Optional[float] = params.get('min_neff', None)
-        self.samples_per_well: Optional[int] = params.get('samples_per_well', None)
-        if self.samples_per_well is None:
-            self.mcmc_num_samples: int = params.get('mcmc_num_samples', 5000)
+        self.spatial_dimensions = spatial_dimensions
+        self.time_steps = time_steps
+        self.warmup_ratio = warmup_ratio
+        
+        if starting_bounds is None:
+             self.starting_bounds = torch.tensor([[-5, 5]] * self.spatial_dimensions, device=self.device)
         else:
-            self.mcmc_num_samples: int = self.samples_per_well * self.mcmc_chains_per_well * 2**self.spatial_dimensions
-        self.beta: float = params.get('beta', 1.0)
-        self.gamma: float = params['gamma']
-        self.dt: float = params['dt']
-        self.noise_sigma: torch.Tensor = torch.sqrt(torch.tensor(2 * self.gamma / self.beta))
-        self.mass: float = params['mass']
-        self.starting_pos: Optional[torch.Tensor] = None
-        self.run_every_epoch: bool = params.get('run_every_epoch', False)
+             self.starting_bounds = starting_bounds
+             
+        self.chains_per_well = chains_per_well
+        self.min_neff = min_neff
+        self.samples_per_well = samples_per_well
+        
+        if self.samples_per_well is None:
+            self.num_samples = num_samples
+        else:
+            self.num_samples = self.samples_per_well * self.chains_per_well * 2**self.spatial_dimensions
+            
+        self.beta = beta
+        self.gamma = gamma
+        self.dt = dt
+        self.noise_sigma = torch.sqrt(torch.tensor(2 * self.gamma / self.beta))
+        self.mass = mass
+        self.starting_pos = None
+        self.run_every_epoch = run_every_epoch
+        
         if self.run_every_epoch:
             print("Warning: Running MCMC every epoch will be very slow and is not recommended for training. Please use the ConditionalFlowBoltzmannGenerator instead if your potential doesn't change at t0.")
 
         self.hparams = {
             'spatial_dimensions': self.spatial_dimensions,
             'time_steps': self.time_steps,
-            'mcmc_warmup_ratio': self.mcmc_warmup_ratio,
-            'mcmc_starting_spatial_bounds': self.mcmc_starting_spatial_bounds.tolist() if isinstance(self.mcmc_starting_spatial_bounds, torch.Tensor) else self.mcmc_starting_spatial_bounds,
-            'mcmc_chains_per_well': self.mcmc_chains_per_well,
+            'warmup_ratio': self.warmup_ratio,
+            'starting_bounds': self.starting_bounds.tolist() if isinstance(self.starting_bounds, torch.Tensor) else self.starting_bounds,
+            'chains_per_well': self.chains_per_well,
             'min_neff': self.min_neff,
             'samples_per_well': self.samples_per_well,
-            'mcmc_num_samples': self.mcmc_num_samples,
+            'num_samples': self.num_samples,
             'beta': self.beta,
             'gamma': self.gamma,
             'dt': self.dt,
@@ -92,7 +115,7 @@ class McmcNuts(InitialConditionGenerator):
 
         # we draw from randn which produces N(0, 1) and scale by sigma to get N(0, sigma)
         var = 1 / (self.beta * self.mass)
-        samples = torch.randn(self.mcmc_num_samples, self.spatial_dimensions, device=self.device) * math.sqrt(var)
+        samples = torch.randn(self.num_samples, self.spatial_dimensions, device=self.device) * math.sqrt(var)
         return samples
 
     def _get_noise(self) -> torch.Tensor:
@@ -101,7 +124,7 @@ class McmcNuts(InitialConditionGenerator):
         Returns:
             Noise tensor. Shape: (Num_Samples, Spatial_Dim, Time_Steps).
         """
-        samples = torch.randn(self.mcmc_num_samples, self.spatial_dimensions, self.time_steps, device=self.device) * self.noise_sigma * math.sqrt(self.dt)
+        samples = torch.randn(self.num_samples, self.spatial_dimensions, self.time_steps, device=self.device) * self.noise_sigma * math.sqrt(self.dt)
         return samples
 
     def _run_multichain_mcmc(self, potential: Potential, protocol: Protocol, loss: Loss) -> torch.Tensor:
@@ -125,17 +148,17 @@ class McmcNuts(InitialConditionGenerator):
 
             for well_idx, bounds in enumerate(well_bounds):
 
-                samples_per_chain = self.samples_per_well // self.mcmc_chains_per_well
+                samples_per_chain = self.samples_per_well // self.chains_per_well
 
                 for attempt in range(max_attempts):
                     well_samples = []
 
                     # Run chains
-                    for chain_id in range(self.mcmc_chains_per_well):
+                    for chain_id in range(self.chains_per_well):
                         sampler = MCMC(
                             NUTS(lambda: self._posterior_for_mcmc(bounds[:, 0], bounds[:, 1], potential, protocol)),
                             num_samples=samples_per_chain,
-                            warmup_steps=int(self.mcmc_warmup_ratio * samples_per_chain)
+                            warmup_steps=int(self.warmup_ratio * samples_per_chain)
                         )
                         sampler.run()
                         well_samples.append(sampler.get_samples()['x'])
@@ -181,11 +204,11 @@ class McmcNuts(InitialConditionGenerator):
         else:
             # Legacy mode: global sampling
             all_samples = []
-            num_chains = self.mcmc_chains_per_well
-            samples_per_chain = self.mcmc_num_samples // num_chains
+            num_chains = self.chains_per_well
+            samples_per_chain = self.num_samples // num_chains
 
-            bounds_low = self.mcmc_starting_spatial_bounds[:, 0]
-            bounds_high = self.mcmc_starting_spatial_bounds[:, 1]
+            bounds_low = self.starting_bounds[:, 0]
+            bounds_high = self.starting_bounds[:, 1]
 
             for attempt in range(max_attempts):
                 chain_samples_list = []
@@ -194,7 +217,7 @@ class McmcNuts(InitialConditionGenerator):
                     sampler = MCMC(
                         NUTS(lambda: self._posterior_for_mcmc(bounds_low, bounds_high, potential, protocol)),
                         num_samples=samples_per_chain,
-                        warmup_steps=int(self.mcmc_warmup_ratio * samples_per_chain)
+                        warmup_steps=int(self.warmup_ratio * samples_per_chain)
                     )
                     sampler.run()
                     chain_samples_list.append(sampler.get_samples()['x'])
@@ -249,10 +272,10 @@ class McmcNuts(InitialConditionGenerator):
         """Partition the sampling bounds using midpoints to create per-well regions"""
 
         if not hasattr(loss, 'midpoints'):
-            return [self.mcmc_starting_spatial_bounds]
+            return [self.starting_bounds]
 
         midpoints = loss.midpoints
-        bounds = self.mcmc_starting_spatial_bounds
+        bounds = self.starting_bounds
 
         dim_segments = []
         for dim_idx in range(self.spatial_dimensions):

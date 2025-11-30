@@ -10,7 +10,7 @@ class Protocol(torch.nn.Module, ABC):
 
         Args:
             time_steps: The number of time steps in the protocol.
-            fixed_starting: If True, the starting configuration is fixed and not trainable/random.
+            fixed_starting: If True, the t0 control output is fixed and not trainable/random.
         """
         super().__init__()
         self.time_steps = time_steps
