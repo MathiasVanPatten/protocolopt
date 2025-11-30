@@ -2,7 +2,6 @@
 import torch
 from tqdm import tqdm
 from typing import Dict, Any, List, Optional, Union
-from .config import ProtocolOptimizerConfig
 from ..utils import logger
 from .potential import Potential
 from .simulator import Simulator
@@ -21,8 +20,10 @@ class ProtocolOptimizer:
         loss: Loss,
         protocol: Protocol,
         initial_condition_generator: InitialConditionGenerator,
-        params: Union[ProtocolOptimizerConfig, Dict[str, Any]],
-        callbacks: List[Callback] = []
+        callbacks: List[Callback] = [],
+        epochs: int = 100,
+        learning_rate: float = 0.001,
+        grad_clip_max_norm: float = 1.0
     ) -> None:
         """Initializes the ProtocolOptimizer.
 
@@ -32,39 +33,22 @@ class ProtocolOptimizer:
             loss: The loss function to minimize.
             protocol: The time-dependent protocol model.
             initial_condition_generator: Generator for starting states.
-            params: Configuration parameters. Can be a dict or ProtocolOptimizerConfig object.
             callbacks: List of callbacks to run during training.
+            epochs: Number of training epochs.
+            learning_rate: Learning rate for the optimizer.
+            grad_clip_max_norm: Maximum norm for gradient clipping.
         """
         self.potential = potential
         self.simulator = simulator
         self.loss = loss
         self.protocol = protocol
         self.init_cond_generator = initial_condition_generator
-        self.device = getattr(self.protocol, 'device', torch.device('cpu'))
         self.callbacks = callbacks
-
-        if isinstance(params, dict):
-            self.config = ProtocolOptimizerConfig.from_dict(params)
-        else:
-            self.config = params
-
-        self.spatial_dimensions = self.config.spatial_dimensions
-        self.time_steps = self.config.time_steps
-        self.epochs = self.config.epochs
-        self.learning_rate = self.config.learning_rate
-        self.beta = self.config.beta
-        self.grad_clip_max_norm = self.config.grad_clip_max_norm
-
-        # Simulator params override config if present in simulator
-        self.gamma = getattr(self.simulator, 'gamma', self.config.gamma)
-        self.dt = getattr(self.simulator, 'dt', self.config.dt)
-        if self.dt is None:
-             self.dt = 1.0 / self.time_steps
-
-        self.noise_sigma = torch.sqrt(torch.tensor(2 * self.gamma / self.beta))
-
-        if self.protocol.fixed_starting:
-            self.init_cond_generator.generate_initial_conditions(self.potential, self.protocol, self.loss)
+        # self.device = getattr(self.protocol, 'device', torch.device('cpu'))
+        
+        self.epochs = epochs
+        self.learning_rate = learning_rate
+        self.grad_clip_max_norm = grad_clip_max_norm
 
     def simulate(
         self,
@@ -99,9 +83,8 @@ class ProtocolOptimizer:
             self.potential,
             initial_pos,
             initial_vel,
-            self.time_steps,
+            self.protocol.time_steps,
             noise,
-            self.noise_sigma,
             protocol_tensor,
             debug_print = debug_print
         )
@@ -128,9 +111,13 @@ class ProtocolOptimizer:
 
                 microstate_paths, potential_val, malliavian_weight, protocol_tensor = self.simulate()
 
+                dt = getattr(self.simulator, 'dt', None)
+                if dt is None:
+                    dt = 1.0 / self.protocol.time_steps
+
                 total_loss, per_traj_loss = self.loss.compute_FRR_gradient( self.potential,
                     potential_val, microstate_paths, malliavian_weight,
-                    protocol_tensor, self.dt
+                    protocol_tensor, dt
                 )
 
                 total_loss.backward()
@@ -152,13 +139,7 @@ class ProtocolOptimizer:
                 for callback in self.callbacks:
                     callback.on_epoch_end(self, sim_dict_detached, per_traj_loss, epoch)
 
-        # Reconstruct sim_dict for train_end callback
-        sim_dict = {
-            'microstate_paths': microstate_paths,
-            'potential': potential_val,
-            'malliavian_weight': malliavian_weight
-        }
         for callback in self.callbacks:
-            callback.on_train_end(self, sim_dict, protocol_tensor, epoch)
+            callback.on_train_end(self, sim_dict_detached, protocol_tensor, epoch)
 
         logger.info('Training complete')

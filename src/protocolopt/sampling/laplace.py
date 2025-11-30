@@ -40,6 +40,23 @@ class LaplaceApproximation(InitialConditionGenerator):
 
         self.noise_sigma = torch.sqrt(torch.tensor(2 * self.gamma / self.beta))
 
+        bounds = self.mcmc_starting_spatial_bounds
+        if isinstance(bounds, torch.Tensor):
+            bounds = bounds.tolist()
+        
+        self.hparams = {
+            'centers_shape': list(self.centers.shape),
+            'dt': self.dt,
+            'gamma': self.gamma,
+            'mass': self.mass,
+            'beta': self.beta,
+            'spatial_dimensions': self.spatial_dimensions,
+            'time_steps': self.time_steps,
+            'num_samples': self.num_samples,
+            'mcmc_starting_spatial_bounds': bounds,
+            'name': self.__class__.__name__
+        }
+
     def _solve_landscape(self, potential: Potential, protocol: Protocol) -> None:
         """Computes the Hessian and log weights at the centers."""
         coeff_at_t0 = protocol.get_protocol_tensor()[:, 0]

@@ -1,7 +1,7 @@
 from ..core.protocol import Protocol
 import torch
 import torch.nn.functional as F
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 
 class LinearPiecewise(Protocol):
     """Protocol parameterized by linear interpolation between knots."""
@@ -36,6 +36,15 @@ class LinearPiecewise(Protocol):
             self._trainable_params = torch.nn.Parameter(initial_coeff_guess.clone())
 
         self.device = initial_coeff_guess.device
+
+        self.hparams = {
+            'control_dim': self.control_dim,
+            'time_steps': self.time_steps,
+            'knot_count': self.knot_count,
+            'fixed_starting': self.fixed_starting,
+            'endpoints_shape': list(self.endpoints.shape) if self.endpoints is not None else None,
+            'name': self.__class__.__name__
+        }
 
     def _get_knots(self) -> torch.Tensor:
         if self.endpoints is not None:

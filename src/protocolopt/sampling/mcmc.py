@@ -59,6 +59,23 @@ class McmcNuts(InitialConditionGenerator):
         if self.run_every_epoch:
             print("Warning: Running MCMC every epoch will be very slow and is not recommended for training. Please use the ConditionalFlowBoltzmannGenerator instead if your potential doesn't change at t0.")
 
+        self.hparams = {
+            'spatial_dimensions': self.spatial_dimensions,
+            'time_steps': self.time_steps,
+            'mcmc_warmup_ratio': self.mcmc_warmup_ratio,
+            'mcmc_starting_spatial_bounds': self.mcmc_starting_spatial_bounds.tolist() if isinstance(self.mcmc_starting_spatial_bounds, torch.Tensor) else self.mcmc_starting_spatial_bounds,
+            'mcmc_chains_per_well': self.mcmc_chains_per_well,
+            'min_neff': self.min_neff,
+            'samples_per_well': self.samples_per_well,
+            'mcmc_num_samples': self.mcmc_num_samples,
+            'beta': self.beta,
+            'gamma': self.gamma,
+            'dt': self.dt,
+            'mass': self.mass,
+            'run_every_epoch': self.run_every_epoch,
+            'name': self.__class__.__name__
+        }
+
     def _get_initial_velocities(self) -> torch.Tensor:
         """Generates initial velocities from the Maxwell-Boltzmann distribution.
 

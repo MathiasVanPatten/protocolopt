@@ -64,6 +64,15 @@ class ConditionalFlow(McmcNuts, nn.Module):
         self.flow_training_well_count = 2**self.spatial_dimensions
         self.flow_training_samples_per_well = params.get('flow_training_samples_per_well', 500)
 
+        self.hparams.update({
+            'force_random': self.force_random,
+            'context_dim': self.context_dim,
+            'flow_epochs': self.flow_epochs,
+            'flow_batch_size': self.flow_batch_size,
+            'flow_training_well_count': self.flow_training_well_count,
+            'flow_training_samples_per_well': self.flow_training_samples_per_well
+        })
+
     def set_bounds_from_bits(self, target_bitstring: torch.Tensor, loss: Loss) -> None:
         """Updates sampling bounds to target a specific bitstring well.
 

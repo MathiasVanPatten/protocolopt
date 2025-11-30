@@ -17,7 +17,6 @@ class Simulator(ABC):
         initial_vel: torch.Tensor,
         time_steps: int,
         noise: torch.Tensor,
-        noise_sigma: float,
         protocol_tensor: torch.Tensor,
         debug_print: bool = False
     ) -> Tuple[MicrostatePaths, PotentialTensor, MalliavinWeight]:
@@ -30,7 +29,6 @@ class Simulator(ABC):
             time_steps: Number of integration steps to perform.
             noise: Noise tensor (sampled or given).
                    Shape: (Batch, Spatial_Dim, Time_Steps)
-            noise_sigma: Standard deviation of the noise.
             protocol_tensor: Time-dependent control signals for the potential.
                              Shape: (Control_Dim, Time_Steps)
             debug_print: If True, prints statistics about gradients during execution.

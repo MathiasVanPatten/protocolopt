@@ -5,7 +5,7 @@
 import torch
 import sys
 import os
-from typing import Tuple, Any
+from typing import Tuple, Any, Dict, TYPE_CHECKING
 
 from ..utils import robust_compile, logger
 from ..core.simulator import Simulator
@@ -17,12 +17,13 @@ if TYPE_CHECKING:
 class EulerMaruyama(Simulator):
     """Simulator implementation using the Euler-Maruyama method."""
 
-    def __init__(self, mode: str, gamma: float, mass: float = 1.0, dt: float = None, compile_mode: bool = True) -> None:
+    def __init__(self, mode: str, gamma: float, beta: float = 1.0, mass: float = 1.0, dt: float = None, compile_mode: bool = True) -> None:
         """Initializes the EulerMaruyama simulator.
 
         Args:
             mode: Simulation mode, either 'underdamped' or 'overdamped'.
             gamma: Friction coefficient.
+            beta: 1/kT
             mass: Particle mass (default 1.0).
             dt: Time step size. If None, calculated as 1/time_steps.
             compile_mode: Whether to compile the step functions.
@@ -36,11 +37,25 @@ class EulerMaruyama(Simulator):
         self.dt = dt
         self.mass = mass
         self.gamma = gamma
+        self.beta = beta
         self.compile_mode = compile_mode
+
+        self.noise_sigma = torch.sqrt(torch.tensor(2 * self.gamma / self.beta))
 
         self._compiled_underdamped_step = robust_compile(self._underdamped_step, compile_mode=self.compile_mode)
         self._compiled_overdamped_step = robust_compile(self._overdamped_step, compile_mode=self.compile_mode)
     
+        self.hparams = {
+            'mode': self.mode,
+            'gamma': self.gamma,
+            'beta': self.beta,
+            'mass': self.mass,
+            'noise_sigma': self.noise_sigma,
+            'dt': self.dt,
+            'compile_mode': self.compile_mode,
+            'name': self.__class__.__name__
+        }
+
     @staticmethod
     def _overdamped_step(current_pos, dv_dx, noise, dt, gamma):
         return current_pos - (dv_dx * dt - noise) / gamma
@@ -67,9 +82,7 @@ class EulerMaruyama(Simulator):
         initial_vel: torch.Tensor,
         time_steps: int,
         noise: torch.Tensor,
-        noise_sigma: float,
-        protocol_tensor: torch.Tensor,
-        debug_print: bool = False
+        protocol_tensor: torch.Tensor
     ) -> Tuple[MicrostatePaths, PotentialTensor, MalliavinWeight]:
         """Generates microstate paths based on the system dynamics.
 
@@ -80,10 +93,8 @@ class EulerMaruyama(Simulator):
             time_steps: Number of integration steps to perform.
             noise: Noise tensor (sampled or given).
                    Shape: (Batch, Spatial_Dim, Time_Steps)
-            noise_sigma: Standard deviation of the noise.
             protocol_tensor: Time-dependent control signals for the potential.
                              Shape: (Control_Dim, Time_Steps)
-            debug_print: If True, prints statistics about gradients during execution.
 
         Returns:
             A tuple containing:
@@ -156,12 +167,8 @@ class EulerMaruyama(Simulator):
         potential_tensor = torch.stack(potential_list, dim=-1)  # (num_traj, time_steps)
         dv_dxda_tensor = torch.stack(dv_dxda_list, dim=-1)  # (num_traj, coeff_count, time_steps)
 
-        if debug_print:
-            logger.info(f"Malliavin weight stats - mean: {self._compute_malliavian_weight(dv_dxda_tensor, noise, noise_sigma).mean().item()}, std: {self._compute_malliavian_weight(dv_dxda_tensor, noise, noise_sigma, dt).std().item()}")
-            logger.info(f"dv_dxda_tensor stats - mean: {dv_dxda_tensor.mean().item()}, std: {dv_dxda_tensor.std().item()}, has nan: {torch.isnan(dv_dxda_tensor).any()}")
-
         microstate_paths = torch.cat([traj_pos.unsqueeze(-1), traj_vel.unsqueeze(-1)], dim=-1)
-        malliavian_weight = self._compute_malliavian_weight(dv_dxda_tensor, noise, noise_sigma)
+        malliavian_weight = self._compute_malliavian_weight(dv_dxda_tensor, noise, self.noise_sigma)
 
         return microstate_paths, potential_tensor, malliavian_weight
 

@@ -100,3 +100,4 @@ class Loss(ABC):
         surrogate_grad_scalar = (loss_values_for_scoring * frr_term).mean()
 
         return direct_grad_scalar + surrogate_grad_scalar, loss_values_for_scoring
+    

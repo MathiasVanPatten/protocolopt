@@ -2,8 +2,6 @@ import torch
 import matplotlib.pyplot as plt
 from pathlib import Path
 from ..core.callback import Callback
-from PIL import Image
-import io
 import numpy as np
 from matplotlib.colors import ListedColormap
 from typing import Optional, Dict, Any, TYPE_CHECKING
@@ -12,17 +10,29 @@ from ..core.types import MicrostatePaths, ControlSignal, PotentialTensor
 if TYPE_CHECKING:
     from ..core.protocol_optimizer import ProtocolOptimizer
 
-try:
-    from .aim import AimCallback
-    from aim import Image as AimImage
-    AIM_AVAILABLE = True
-except ImportError:
-    AIM_AVAILABLE = False
-
 plt.ioff()
 
 
-class TrajectoryPlotCallback(Callback):
+class BasePlottingCallback(Callback):
+    """Base callback for plotting that handles saving or logging figures"""
+    
+    def _log_or_save_figure(self, fig: plt.Figure, name: str, epoch: int, optimizer_object: "ProtocolOptimizer", context: Dict[str, Any] = {}, dpi: int = 150) -> None:
+        """Log figure to Aim if available, otherwise save to disk"""
+        aim_callback = next((cb for cb in optimizer_object.callbacks
+                            if type(cb).__name__ == 'AimCallback'), None)
+        
+        if aim_callback and hasattr(aim_callback, 'track_figure'):
+            aim_callback.track_figure(fig, name, epoch, context=context, dpi=dpi)
+        else:
+            # Assumes self.save_dir is set by subclass
+            if not hasattr(self, 'save_dir'):
+                 raise AttributeError(f"{self.__class__.__name__} must define save_dir to use _log_or_save_figure locally")
+            
+            filepath = self.save_dir / f'{name}_epoch_{epoch:04d}.png'
+            fig.savefig(filepath, dpi=dpi)
+
+
+class TrajectoryPlotCallback(BasePlottingCallback):
     """Callback for plotting microstate paths over time"""
     
     def __init__(self, save_dir='figs', plot_frequency=None, num_trajectories=100):
@@ -37,23 +47,6 @@ class TrajectoryPlotCallback(Callback):
         self.plot_frequency = plot_frequency
         self.num_trajectories = num_trajectories
         self.total_epochs = None
-    
-    def _log_or_save_figure(self, fig: plt.Figure, name: str, epoch: int, optimizer_object: "ProtocolOptimizer", dpi: int = 150) -> None:
-        """Log figure to Aim if available, otherwise save to disk"""
-        aim_callback = next((cb for cb in optimizer_object.callbacks
-                            if type(cb).__name__ == 'AimCallback'), None)
-        
-        if AIM_AVAILABLE and aim_callback and hasattr(aim_callback, 'run') and aim_callback.run:
-            buf = io.BytesIO()
-            fig.savefig(buf, format='png', dpi=dpi)
-            buf.seek(0)
-            pil_image = Image.open(buf)
-            
-            aim_callback.run.track(AimImage(pil_image), name=name, epoch=epoch)
-            buf.close()
-        else:
-            filepath = self.save_dir / f'{name}_epoch_{epoch:04d}.png'
-            fig.savefig(filepath, dpi=dpi)
     
     def on_train_start(self, optimizer_object: "ProtocolOptimizer") -> None:
         self.total_epochs = optimizer_object.epochs
@@ -89,10 +82,10 @@ class TrajectoryPlotCallback(Callback):
             plt.xlabel('Time')
             plt.ylabel(f'Position (Dimension {dim_idx})')
             plt.title(f'Microstate Positions Over Time - Dim {dim_idx} (Epoch {epoch})')
-            self._log_or_save_figure(fig, f'trajectory_dim_{dim_idx}', epoch, optimizer_object)
+            self._log_or_save_figure(fig, f'trajectory_dim', epoch, optimizer_object, context={'dim': dim_idx})
             plt.close()
 
-class ConfusionMatrixCallback(Callback):
+class ConfusionMatrixCallback(BasePlottingCallback):
     """Callback for plotting confusion matrix of binary state transitions"""
     
     def __init__(self, save_dir='figs', plot_frequency=None):
@@ -105,23 +98,6 @@ class ConfusionMatrixCallback(Callback):
         self.save_dir.mkdir(parents=True, exist_ok=True)
         self.plot_frequency = plot_frequency
         self.total_epochs = None
-    
-    def _log_or_save_figure(self, fig: plt.Figure, name: str, epoch: int, optimizer_object: "ProtocolOptimizer", dpi: int = 150) -> None:
-        """Log figure to Aim if available, otherwise save to disk"""
-        aim_callback = next((cb for cb in optimizer_object.callbacks
-                            if type(cb).__name__ == 'AimCallback'), None)
-        
-        if AIM_AVAILABLE and aim_callback and hasattr(aim_callback, 'run') and aim_callback.run:
-            buf = io.BytesIO()
-            fig.savefig(buf, format='png', dpi=dpi)
-            buf.seek(0)
-            pil_image = Image.open(buf)
-            
-            aim_callback.run.track(AimImage(pil_image), name=name, epoch=epoch)
-            buf.close()
-        else:
-            filepath = self.save_dir / f'{name}_epoch_{epoch:04d}.png'
-            fig.savefig(filepath, dpi=dpi)
     
     def on_train_start(self, optimizer_object: "ProtocolOptimizer") -> None:
         self.total_epochs = optimizer_object.epochs
@@ -213,7 +189,7 @@ class ConfusionMatrixCallback(Callback):
         self._log_or_save_figure(fig, 'confusion_matrix', epoch, optimizer_object, dpi=150)
         plt.close()
 
-class PotentialLandscapePlotCallback(Callback):
+class PotentialLandscapePlotCallback(BasePlottingCallback):
     
     def __init__(self, save_dir='figs', plot_frequency=None, spatial_resolution=100, trajectories_per_bit=10):
         self.save_dir = Path(save_dir)
@@ -221,23 +197,6 @@ class PotentialLandscapePlotCallback(Callback):
         self.spatial_resolution = spatial_resolution
         self.trajectories_per_bit = trajectories_per_bit
         self.total_epochs = None
-    
-    def _log_or_save_figure(self, fig: plt.Figure, name: str, epoch: int, optimizer_object: "ProtocolOptimizer", dpi: int = 150) -> None:
-        aim_callback = next((cb for cb in optimizer_object.callbacks
-                            if type(cb).__name__ == 'AimCallback'), None)
-        
-        if AIM_AVAILABLE and aim_callback and hasattr(aim_callback, 'run') and aim_callback.run:
-            buf = io.BytesIO()
-            fig.savefig(buf, format='png', dpi=dpi)
-            buf.seek(0)
-            pil_image = Image.open(buf)
-            
-            aim_callback.run.track(AimImage(pil_image), name=name, epoch=epoch)
-            buf.close()
-        else:
-            self.save_dir.mkdir(parents=True, exist_ok=True)
-            filepath = self.save_dir / f'{name}_epoch_{epoch:04d}.png'
-            fig.savefig(filepath, dpi=dpi)
     
     def on_train_start(self, optimizer_object: "ProtocolOptimizer") -> None:
         self.total_epochs = optimizer_object.epochs
@@ -346,32 +305,15 @@ class PotentialLandscapePlotCallback(Callback):
                 
                 ax.plot(traj, time_array, color=color, alpha=0.8, linewidth=1.5)
             
-            self._log_or_save_figure(fig, f'potential_landscape_dim_{dim_idx}', epoch, optimizer_object)
+            self._log_or_save_figure(fig, f'potential_landscape', epoch, optimizer_object, context={'dim': dim_idx})
             plt.close(fig)
 
-class ProtocolPlotCallback(Callback):
+class ProtocolPlotCallback(BasePlottingCallback):
     
     def __init__(self, save_dir='figs', plot_frequency=None):
         self.save_dir = Path(save_dir)
         self.plot_frequency = plot_frequency
         self.total_epochs = None
-    
-    def _log_or_save_figure(self, fig: plt.Figure, name: str, epoch: int, optimizer_object: "ProtocolOptimizer", dpi: int = 150) -> None:
-        aim_callback = next((cb for cb in optimizer_object.callbacks
-                            if type(cb).__name__ == 'AimCallback'), None)
-        
-        if AIM_AVAILABLE and aim_callback and hasattr(aim_callback, 'run') and aim_callback.run:
-            buf = io.BytesIO()
-            fig.savefig(buf, format='png', dpi=dpi)
-            buf.seek(0)
-            pil_image = Image.open(buf)
-            
-            aim_callback.run.track(AimImage(pil_image), name=name, epoch=epoch)
-            buf.close()
-        else:
-            self.save_dir.mkdir(parents=True, exist_ok=True)
-            filepath = self.save_dir / f'{name}_epoch_{epoch:04d}.png'
-            fig.savefig(filepath, dpi=dpi)
     
     def on_train_start(self, optimizer_object: "ProtocolOptimizer") -> None:
         self.total_epochs = optimizer_object.epochs

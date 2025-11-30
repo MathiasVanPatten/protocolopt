@@ -180,14 +180,6 @@ confusion_matrix_callback = ConfusionMatrixCallback(
 )
 callbacks.append(confusion_matrix_callback)
 
-# Add Aim callback if available
-if AIM_AVAILABLE:
-    aim_callback = AimCallback(
-        experiment_name='nand_training',
-        log_system_params=False
-    )
-    callbacks.append(aim_callback)
-
 potential_landscape_callback = PotentialLandscapePlotCallback(
     save_dir='figs',
     plot_frequency=None
@@ -200,6 +192,15 @@ coefficient_callback = ProtocolPlotCallback(
 )
 
 callbacks.append(coefficient_callback)
+
+# IMPORTANT: AimCallback must be last
+# Add Aim callback if available
+if AIM_AVAILABLE:
+    aim_callback = AimCallback(
+        experiment_name='nand_training',
+        log_system_params=False
+    )
+    callbacks.append(aim_callback)
 
 init_cond_generator = LaplaceApproximation(
     params=params,
@@ -214,7 +215,8 @@ simulation = ProtocolOptimizer(
     loss=loss,
     protocol=protocol,
     initial_condition_generator=init_cond_generator,
-    params=params,
+    epochs=training_iterations,
+    learning_rate=learning_rate,
     callbacks=callbacks
 )
 
