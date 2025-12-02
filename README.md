@@ -42,4 +42,4 @@ Optionally, you may add callbacks to the `ProtocolOptimizer` to perform addition
 - **[Documentation](https://mathiasvanpatten.github.io/protocolopt/)**: For detailed API reference and guides, please refer to the documentation in the `docs/` directory.
 - **[Roadmap](https://mathiasvanpatten.github.io/protocolopt/roadmap/)**: Check out the development roadmap for upcoming features and milestones.
 - **[Discussions](https://github.com/MathiasVanPatten/protocolopt/discussions)**: Have questions or ideas? Join the discussion.
-- **[Bug Reports](https://github.com/MathiasVanPatten/protocolopt/issues)**: Found a bug or have a feature request? Open an issue.
+- **[Bug Reports](https://github.com/MathiasVanPatten/protocolopt/issues)**: Found a bug? Open an issue.
