@@ -1,6 +1,16 @@
 # ProtocolOpt
 
-ProtocolOpt is a library designed for optimizing time-dependent protocols in physical systems. The primary goal of this project is to provide a flexible and efficient `ProtocolOptimizer` that can train control protocols to minimize specific loss functions (such as thermodynamic work or entropy production) in stochastic simulations.
+[![Development Status](https://img.shields.io/badge/status-alpha-orange)](https://github.com/mathiasvanpatten/protocolopt)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
+**ProtocolOpt** provides a modular framework for optimizing time-dependent control protocols in stochastic systems using **differentiable programming**.
+
+### What is this?
+Optimizing control in noisy, thermal environments (like superconducting circuits) is notoriously difficult because the noise is non-differentiable. ProtocolOpt solves this by providing:
+
+1.  [cite_start]A **`ProtocolOptimizer`** loop that handles the training orchestration[cite: 50].
+2.  **Differentiable Simulators** for SDEs (Stochastic Differential Equations).
+3.  **Malliavin Weight Estimators** that re-express sensitivity as a correlation function, allowing for stable gradient descent on thermodynamic quantities.
 
 ## Quick Start
 
