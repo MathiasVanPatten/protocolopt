@@ -1,6 +1,6 @@
 # ProtocolOpt
 
-[![Development Status](https://img.shields.io/badge/status-alpha-orange)](https://github.com/mathiasvanpatten/protocolopt)
+[![Development Status](https://img.shields.io/badge/status-early%20beta-yellow)](https://github.com/mathiasvanpatten/protocolopt)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 **ProtocolOpt** provides a modular framework for optimizing time-dependent control protocols in stochastic systems using **differentiable programming**.
