@@ -8,7 +8,7 @@
 ### What is this?
 Optimizing control in noisy, thermal environments (like superconducting circuits) is notoriously difficult because the noise is non-differentiable. ProtocolOpt solves this by providing:
 
-1.  [cite_start]A **`ProtocolOptimizer`** loop that handles the training orchestration[cite: 50].
+1.  A **`ProtocolOptimizer`** loop that handles the training orchestration.
 2.  **Differentiable Simulators** for SDEs (Stochastic Differential Equations).
 3.  **Malliavin Weight Estimators** that re-express sensitivity as a correlation function, allowing for stable gradient descent on thermodynamic quantities.
 
