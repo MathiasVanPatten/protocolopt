@@ -63,7 +63,7 @@ class EulerMaruyama(Simulator):
     @staticmethod
     def _underdamped_step(current_pos, current_vel, dv_dx, noise, dt, gamma, mass):
         next_pos = current_pos + current_vel * dt
-        next_vel = (current_vel - gamma * current_vel * dt - dv_dx * dt + noise) / mass
+        next_vel = current_vel + ( -1 * gamma * current_vel * dt - dv_dx * dt + noise) / mass
         return next_pos, next_vel
 
     def _compute_malliavin_weight(self, dv_dxda, noise, noise_sigma):
