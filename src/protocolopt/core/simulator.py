@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Tuple, Any, TYPE_CHECKING
 import torch
-from .types import MicrostatePaths, PotentialTensor, MalliavinWeight, StateSpace, ControlSignal
+from .types import MicrostatePaths, PotentialTensor, MalliavinWeight, StateSpace, ControlSignal, WorkTensor
 
 if TYPE_CHECKING:
     from .potential import Potential
@@ -18,7 +18,7 @@ class Simulator(ABC):
         time_steps: int,
         noise: torch.Tensor,
         protocol_tensor: torch.Tensor,
-    ) -> Tuple[MicrostatePaths, PotentialTensor, MalliavinWeight]:
+    ) -> Tuple[MicrostatePaths, PotentialTensor, MalliavinWeight, WorkTensor]:
         """Generates microstate paths based on the system dynamics.
 
         Args:
@@ -40,5 +40,7 @@ class Simulator(ABC):
                                  Shape: (Batch, Time_Steps)
             - **malliavin_weight**: Computed path weights.
                                     Shape: (Batch, Control_Dim, Time_Steps)
+            - **dw_tensor**: Change in potential energy at each step.
+                      Shape: (Batch, Time_Steps)
         """
         pass

@@ -105,6 +105,8 @@ class EulerMaruyama(Simulator):
                                  Shape: (Batch, Time_Steps)
             - **malliavin_weight**: Computed path weights.
                                      Shape: (Batch, Control_Dim, Time_Steps)
+            - **dw**: Change in potential energy at each step.
+                      Shape: (Batch, Time_Steps)
 
         Raises:
             ValueError: If an invalid simulation mode is selected.
@@ -124,7 +126,7 @@ class EulerMaruyama(Simulator):
         traj_vel_list = [initial_vel]
         potential_list = []
         dv_dxda_list = []
-
+        dw_list = []
         for i in range(time_steps):
             if self.mode == 'underdamped':
                 # dx = v * dt
@@ -140,6 +142,10 @@ class EulerMaruyama(Simulator):
                 next_pos, next_vel = self._compiled_underdamped_step(
                                     current_pos, current_vel, dv_dx, noise[..., i], dt, self.gamma, self.mass
                                 )
+
+                U_next = potential.get_potential_value(current_pos, protocol_tensor, min(i+1, time_steps-1))
+                dw_list.append(U_next - U)
+
                 traj_pos_list.append(next_pos)
                 traj_vel_list.append(next_vel)
                 potential_list.append(U.squeeze())
@@ -155,6 +161,10 @@ class EulerMaruyama(Simulator):
                 dv_dxda = potential.dv_dxda(current_pos, protocol_tensor, i)
             
                 next_pos = self._compiled_overdamped_step(current_pos, dv_dx, noise[..., i], dt, self.gamma)
+
+                U_next = potential.get_potential_value(current_pos, protocol_tensor, min(i+1, time_steps-1))
+                dw_list.append(U_next - U)
+
                 traj_pos_list.append(next_pos)
                 traj_vel_list.append(torch.zeros_like(next_pos))
                 potential_list.append(U.squeeze())
@@ -166,8 +176,9 @@ class EulerMaruyama(Simulator):
         traj_vel = torch.stack(traj_vel_list, dim=-1)  # (num_traj, spatial_dims, time_steps+1)
         potential_tensor = torch.stack(potential_list, dim=-1)  # (num_traj, time_steps)
         dv_dxda_tensor = torch.stack(dv_dxda_list, dim=-1)  # (num_traj, coeff_count, time_steps)
+        dw_tensor = torch.stack(dw_list, dim=-1)  # (num_traj, time_steps)
 
         microstate_paths = torch.cat([traj_pos.unsqueeze(-1), traj_vel.unsqueeze(-1)], dim=-1)
         malliavin_weight = self._compute_malliavin_weight(dv_dxda_tensor, noise, self.noise_sigma)
 
-        return microstate_paths, potential_tensor, malliavin_weight
+        return microstate_paths, potential_tensor, malliavin_weight, dw_tensor

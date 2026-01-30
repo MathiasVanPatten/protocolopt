@@ -1,5 +1,5 @@
 from ..core.loss import Loss, TruthTableError
-from ..core.types import PotentialTensor, MicrostatePaths, ControlSignal
+from ..core.types import PotentialTensor, MicrostatePaths, ControlSignal, WorkTensor
 from .functional import variance_loss, work_loss, temporal_smoothness_penalty
 from typing import Dict, Optional, Union, List, Any
 import torch
@@ -201,12 +201,13 @@ class StandardLogicGateLoss(LogicGateEndpointLossBase):
             'smoothness_weight': self.smoothness_weight
         })
 
-    def loss(self, potential_tensor: PotentialTensor, microstate_paths: MicrostatePaths, protocol_tensor: ControlSignal, dt: float) -> torch.Tensor:
+    def loss(self, potential_tensor: PotentialTensor, microstate_paths: MicrostatePaths, dw_tensor: WorkTensor, protocol_tensor: ControlSignal, dt: float) -> torch.Tensor:
         """Computes the combined loss.
 
         Args:
             potential_tensor: Potential energy values. Shape: (Batch, Time_Steps)
             microstate_paths: Microstate paths data. Shape: (Batch, Spatial_Dim, Time_Steps+1, 2)
+            dw_tensor: Change in potential energy at each step. Shape: (Batch, Time_Steps)
             protocol_tensor: Control signals. Shape: (Control_Dim, Time_Steps)
             dt: Time step size.
 
@@ -215,7 +216,7 @@ class StandardLogicGateLoss(LogicGateEndpointLossBase):
         """
         starting_bits_int = self._compute_starting_bits_int(microstate_paths)
         endpoint_loss = self._endpoint_loss(microstate_paths)
-        work_loss_value = work_loss(potential_tensor)
+        work_loss_value = work_loss(dw_tensor)
         var_loss_value = variance_loss(microstate_paths, starting_bits_int, self.domain)
         smoothness_loss_value = temporal_smoothness_penalty(protocol_tensor, dt)
         return (
@@ -225,13 +226,14 @@ class StandardLogicGateLoss(LogicGateEndpointLossBase):
             + self.smoothness_weight * smoothness_loss_value
         )
     
-    def log_components(self, potential_tensor: PotentialTensor, microstate_paths: MicrostatePaths, protocol_tensor: ControlSignal, dt: float) -> Dict[str, torch.Tensor]:
+    def log_components(self, potential_tensor: PotentialTensor, microstate_paths: MicrostatePaths, dw_tensor: WorkTensor, protocol_tensor: ControlSignal, dt: float) -> Dict[str, torch.Tensor]:
         """
         Compute individual loss components for logging/analysis.
         
         Args:
             potential_tensor: Detached potential tensor
             microstate_paths: Detached microstate paths tensor
+            dw_tensor: Detached work tensor
             protocol_tensor: Protocol tensor
             dt: Time step
             
@@ -240,7 +242,7 @@ class StandardLogicGateLoss(LogicGateEndpointLossBase):
         """
         starting_bits_int = self._compute_starting_bits_int(microstate_paths)
         endpoint_loss_val = self._endpoint_loss(microstate_paths)
-        work_loss_val = work_loss(potential_tensor)
+        work_loss_val = work_loss(dw_tensor)
         var_loss_val = variance_loss(microstate_paths, starting_bits_int, self.domain)
         smoothness_loss_val = temporal_smoothness_penalty(protocol_tensor, dt)
         

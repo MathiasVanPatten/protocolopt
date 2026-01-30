@@ -1,16 +1,17 @@
 import torch
-from ..core.types import PotentialTensor, MicrostatePaths, ControlSignal
+from ..core.types import PotentialTensor, MicrostatePaths, ControlSignal, WorkTensor
 
-def work_loss(potential_tensor):
-    """Calculates the discrete work increment sum Delta V.
+def work_loss(dw_tensor: WorkTensor):
+    """Calculates the total work from the discrete work increments.
 
     Args:
-        potential_tensor: Potential values along paths.
+        dw_tensor: Change in potential energy at each step.
+                   Shape: (Batch, Time_Steps)
 
     Returns:
-        Total work done along each path.
+        Total work done along each path. Shape: (Batch,)
     """
-    return (potential_tensor[...,1:] - potential_tensor[...,:-1]).sum(axis = -1)
+    return dw_tensor.sum(axis=-1)
 
 def variance_loss(microstate_paths: MicrostatePaths, starting_bits_int: torch.Tensor, domain_size: int, phase_dimension: int = 0) -> torch.Tensor:
     """Computes the variance of microstate paths that started together.

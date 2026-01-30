@@ -2,7 +2,7 @@ import torch
 from abc import ABC, abstractmethod
 from typing import Tuple, Dict, Any, TYPE_CHECKING
 from torch.func import vmap
-from .types import PotentialTensor, MicrostatePaths, ControlSignal, MalliavinWeight
+from .types import PotentialTensor, MicrostatePaths, ControlSignal, MalliavinWeight, WorkTensor
 
 if TYPE_CHECKING:
     from .potential import Potential
@@ -16,7 +16,7 @@ class Loss(ABC):
     """Abstract base class for loss functions."""
 
     @abstractmethod
-    def loss(self, potential_tensor: PotentialTensor, microstate_paths: MicrostatePaths, protocol_tensor: ControlSignal, dt: float) -> torch.Tensor:
+    def loss(self, potential_tensor: PotentialTensor, microstate_paths: MicrostatePaths, dw_tensor: WorkTensor, protocol_tensor: ControlSignal, dt: float) -> torch.Tensor:
         """Computes the loss for a batch of microstate paths.
 
         Args:
@@ -25,6 +25,8 @@ class Loss(ABC):
             microstate_paths: Microstate path data.
                               Shape: (Batch, Spatial_Dim, Time_Steps+1, 2)
                               Dimension 3 is (position, velocity).
+            dw_tensor: Change in potential energy at each step.
+                       Shape: (Batch, Time_Steps)
             protocol_tensor: Control signals from the protocol.
                              Shape: (Control_Dim, Time_Steps)
             dt: Time step size.
@@ -48,6 +50,7 @@ class Loss(ABC):
         potential_tensor: PotentialTensor,
         microstate_paths: MicrostatePaths,
         malliavin_weights: MalliavinWeight,
+        dw_tensor: WorkTensor,
         protocol_tensor: ControlSignal,
         dt: float
     ) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -58,6 +61,7 @@ class Loss(ABC):
             potential_tensor: Recorded potential values.
             microstate_paths: Recorded microstate paths.
             malliavin_weights: Computed Malliavin weights for gradient estimation.
+            dw_tensor: Change in potential energy at each step.
             protocol_tensor: The current control signals from the protocol.
             dt: Time step.
 
@@ -81,6 +85,7 @@ class Loss(ABC):
         loss_values_direct = self.loss(
             clean_potential_tensor,
             microstate_paths.detach(), # detach to avoid double counting through the stochastic correction loss
+            dw_tensor.detach(),
             protocol_tensor,
             dt
         )
@@ -92,6 +97,7 @@ class Loss(ABC):
             loss_values_for_scoring = self.loss(
                 potential_tensor,
                 microstate_paths,
+                dw_tensor,
                 protocol_tensor,
                 dt
             )
