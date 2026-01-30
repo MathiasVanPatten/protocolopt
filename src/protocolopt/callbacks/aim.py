@@ -99,6 +99,7 @@ class AimCallback(Callback):
             metrics = optimizer.loss.log_components(
                 sim_dict['potential'], 
                 sim_dict['microstate_paths'],
+                sim_dict['dw_tensor'],
                 sim_dict['protocol_tensor'], 
                 optimizer.simulator.dt
             )
