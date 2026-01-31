@@ -81,11 +81,16 @@ class Loss(ABC):
         batched_time_potential = vmap(potential_at_t, in_dims=(2, 1), out_dims=1)
 
         clean_potential_tensor = batched_time_potential(pos_tensor_detached[...,:-1], protocol_tensor)
-
+        
+        # Compute clean work: U(x_t, λ_{t+1}) - U(x_t, λ_t) at frozen positions
+        protocol_shifted = torch.cat([protocol_tensor[:, 1:], protocol_tensor[:, -1:]], dim=1)
+        clean_potential_next = batched_time_potential(pos_tensor_detached[...,:-1], protocol_shifted)
+        clean_dw_tensor = clean_potential_next - clean_potential_tensor
+        
         loss_values_direct = self.loss(
             clean_potential_tensor,
             microstate_paths.detach(), # detach to avoid double counting through the stochastic correction loss
-            dw_tensor.detach(),
+            clean_dw_tensor,
             protocol_tensor,
             dt
         )
