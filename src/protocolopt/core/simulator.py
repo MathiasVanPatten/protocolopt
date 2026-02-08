@@ -29,7 +29,7 @@ class Simulator(ABC):
             noise: Noise tensor (sampled or given).
                    Shape: (Batch, Spatial_Dim, Time_Steps)
             protocol_tensor: Time-dependent control signals for the potential.
-                             Shape: (Control_Dim, Time_Steps)
+                             Shape: (Control_Dim, Time_Steps+1)
 
         Returns:
             A tuple containing:

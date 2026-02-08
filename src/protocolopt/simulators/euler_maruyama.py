@@ -94,7 +94,7 @@ class EulerMaruyama(Simulator):
             noise: Noise tensor (sampled or given).
                    Shape: (Batch, Spatial_Dim, Time_Steps)
             protocol_tensor: Time-dependent control signals for the potential.
-                             Shape: (Control_Dim, Time_Steps)
+                             Shape: (Control_Dim, Time_Steps+1)
 
         Returns:
             A tuple containing:
@@ -143,7 +143,7 @@ class EulerMaruyama(Simulator):
                                     current_pos, current_vel, dv_dx, noise[..., i], dt, self.gamma, self.mass
                                 )
 
-                U_next = potential.get_potential_value(current_pos, protocol_tensor, min(i+1, time_steps-1))
+                U_next = potential.get_potential_value(current_pos, protocol_tensor, i + 1)
                 dw_list.append(U_next - U)
 
                 traj_pos_list.append(next_pos)
@@ -162,7 +162,7 @@ class EulerMaruyama(Simulator):
             
                 next_pos = self._compiled_overdamped_step(current_pos, dv_dx, noise[..., i], dt, self.gamma)
 
-                U_next = potential.get_potential_value(current_pos, protocol_tensor, min(i+1, time_steps-1))
+                U_next = potential.get_potential_value(current_pos, protocol_tensor, i + 1)
                 dw_list.append(U_next - U)
 
                 traj_pos_list.append(next_pos)

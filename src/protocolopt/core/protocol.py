@@ -37,7 +37,7 @@ class Protocol(torch.nn.Module, ABC):
         """Returns the full grid of coefficients over time.
 
         Returns:
-            A tensor of coefficients. Shape: (Control_Dim, Time_Steps).
+            A tensor of coefficients. Shape: (Control_Dim, Time_Steps+1).
         """
         pass
 

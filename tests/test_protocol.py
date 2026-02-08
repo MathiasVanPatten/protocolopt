@@ -22,7 +22,7 @@ class TestLinearPiecewise(unittest.TestCase):
         protocol_tensor = protocol.get_protocol_tensor()
 
         # Assert
-        self.assertEqual(protocol_tensor.shape, (control_dim, time_steps))
+        self.assertEqual(protocol_tensor.shape, (control_dim, time_steps + 1))
 
 if __name__ == '__main__':
     unittest.main()

@@ -191,8 +191,9 @@ class PotentialLandscapePlotCallback(BasePlottingCallback):
             query_points = torch.zeros(self.spatial_resolution, spatial_dimensions, device=optimizer_object.device)
             query_points[:, dim_idx] = x_grid
 
-            potential_values = torch.zeros(self.spatial_resolution, time_steps)
-            for t_idx in range(time_steps):
+            protocol_time_points = protocol_tensor.shape[1]
+            potential_values = torch.zeros(self.spatial_resolution, protocol_time_points)
+            for t_idx in range(protocol_time_points):
                 coeff_slice = protocol_tensor[:, t_idx]
                 potential_values[:, t_idx] = potential_obj.potential_value(query_points, coeff_slice).cpu()
             
@@ -229,7 +230,7 @@ class PotentialLandscapePlotCallback(BasePlottingCallback):
             
             fig, ax = plt.subplots(figsize=(10, 6))
             im = ax.imshow(potential_values.T, aspect='auto', origin='lower', 
-                          extent=[x_min, x_max, 0, time_steps], cmap='viridis', 
+                          extent=[x_min, x_max, 0, protocol_time_points], cmap='viridis', 
                           vmin=v_min, vmax=v_max)
             ax.set_xlabel('Position')
             ax.set_ylabel('Time')
