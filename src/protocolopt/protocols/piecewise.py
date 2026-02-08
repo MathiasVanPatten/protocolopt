@@ -56,10 +56,10 @@ class LinearPiecewise(Protocol):
         """Interpolates knots to get the full coefficient grid.
 
         Returns:
-            Coefficient grid. Shape: (Coeffs, Time_Steps).
+            Coefficient grid. Shape: (Control_Dim, Time_Steps+1).
         """
         knots = self._get_knots()
-        protocol_tensor = F.interpolate(knots.unsqueeze(0), size=self.time_steps, mode='linear', align_corners=True)
+        protocol_tensor = F.interpolate(knots.unsqueeze(0), size=self.time_steps + 1, mode='linear', align_corners=True)
         return protocol_tensor.squeeze(0)
     
     def trainable_params(self) -> List[torch.nn.Parameter]:

@@ -28,7 +28,7 @@ class Loss(ABC):
             dw_tensor: Change in potential energy at each step.
                        Shape: (Batch, Time_Steps)
             protocol_tensor: Control signals from the protocol.
-                             Shape: (Control_Dim, Time_Steps)
+                             Shape: (Control_Dim, Time_Steps+1)
             dt: Time step size.
 
         Returns:
@@ -80,11 +80,10 @@ class Loss(ABC):
         # outdims: 1, put time at the end
         batched_time_potential = vmap(potential_at_t, in_dims=(2, 1), out_dims=1)
 
-        clean_potential_tensor = batched_time_potential(pos_tensor_detached[...,:-1], protocol_tensor)
+        clean_potential_tensor = batched_time_potential(pos_tensor_detached[...,:-1], protocol_tensor[:, :-1])
         
         # Compute clean work: U(x_t, λ_{t+1}) - U(x_t, λ_t) at frozen positions
-        protocol_shifted = torch.cat([protocol_tensor[:, 1:], protocol_tensor[:, -1:]], dim=1)
-        clean_potential_next = batched_time_potential(pos_tensor_detached[...,:-1], protocol_shifted)
+        clean_potential_next = batched_time_potential(pos_tensor_detached[...,:-1], protocol_tensor[:, 1:])
         clean_dw_tensor = clean_potential_next - clean_potential_tensor
         
         loss_values_direct = self.loss(
@@ -109,7 +108,7 @@ class Loss(ABC):
 
         # Make sure the eventual backwards goes back through to the control signals and trainable params only
         # Sum over (Control_Dim, Time)
-        frr_term = (malliavin_weights.detach() * protocol_tensor).sum(dim=(-2, -1))
+        frr_term = (malliavin_weights.detach() * protocol_tensor[:, :-1]).sum(dim=(-2, -1))
         surrogate_grad_scalar = (loss_values_for_scoring * frr_term).mean()
 
         return direct_grad_scalar + surrogate_grad_scalar, loss_values_for_scoring
