@@ -1,7 +1,3 @@
-#defintion of what a timestep looks like
-#uses the Euler-Maruyama Method to numerically advance
-#either over or underdamped systems
-
 import torch
 import sys
 import os
@@ -14,14 +10,13 @@ from ..core.types import StateSpace, MicrostatePaths, PotentialTensor, Malliavin
 if TYPE_CHECKING:
     from ..core.potential import Potential
 
-class EulerMaruyama(Simulator):
-    """Simulator implementation using the Euler-Maruyama method."""
-
-    def __init__(self, mode: str, gamma: float, beta: float = 1.0, mass: float = 1.0, dt: float = None, compile_mode: bool = True) -> None:
-        """Initializes the EulerMaruyama simulator.
+class GJF(Simulator):
+    """Simulator using the 2013 Grønbech-Jensen and Farago Verlet Langevin Integrator. As defined in eqn 50 of https://doi.org/10.1007/s10955-025-03553-3 with help from 10.1080/00268976.2012.760055 since the review paper had a typo in the next_pos equation."""
+    def __init__(self, mode: str, gamma: float, beta: float = 1.0, mass: float = 1.0, dt: float = None, compile_mode: bool = True):
+        """Initializes the GJF simulator.
 
         Args:
-            mode: Simulation mode, either 'underdamped' or 'overdamped'.
+            mode: Simulation mode, must be underdamped, arg left in for dropin compatibility 
             gamma: Friction coefficient.
             beta: 1/kT
             mass: Particle mass (default 1.0).
@@ -29,22 +24,20 @@ class EulerMaruyama(Simulator):
             compile_mode: Whether to compile the step functions.
 
         Raises:
-            ValueError: If mode is not 'underdamped' or 'overdamped'.
+            ValueError: If mode is not 'underdamped'
         """
-        if mode not in ['underdamped', 'overdamped']:
-            raise ValueError(f"Invalid mode: {mode}, choose from 'underdamped' or 'overdamped'")
+        if mode != "underdamped":
+            raise ValueError("GJF only supports underdamped mode as it is a second order integrator.")
+        
         self.mode = mode
         self.dt = dt
         self.mass = mass
         self.gamma = gamma
         self.beta = beta
         self.compile_mode = compile_mode
-
         self.noise_sigma = torch.sqrt(torch.tensor(2 * self.gamma / self.beta))
-
-        self._compiled_underdamped_step = robust_compile(self._underdamped_step, compile_mode=self.compile_mode)
-        self._compiled_overdamped_step = robust_compile(self._overdamped_step, compile_mode=self.compile_mode)
-    
+        self._compiled_next_pos = robust_compile(self._next_pos, compile_mode=self.compile_mode)
+        self._compiled_next_vel = robust_compile(self._next_vel, compile_mode=self.compile_mode)
         self.hparams = {
             'mode': self.mode,
             'gamma': self.gamma,
@@ -55,16 +48,14 @@ class EulerMaruyama(Simulator):
             'compile_mode': self.compile_mode,
             'name': self.__class__.__name__
         }
+        
+    @staticmethod
+    def _next_pos(pos, vel, force, noise, dt, mass, c1):
+        return pos + c1 * (dt * vel + (dt**2 / (2 * mass)) * force + (dt / (2 * mass)) * noise) #testing if dt in num of last term is correct
 
     @staticmethod
-    def _overdamped_step(current_pos, dv_dx, noise, dt, gamma):
-        return current_pos - (dv_dx * dt - noise) / gamma
-
-    @staticmethod
-    def _underdamped_step(current_pos, current_vel, dv_dx, noise, dt, gamma, mass):
-        next_pos = current_pos + current_vel * dt
-        next_vel = current_vel + ( -1 * gamma * current_vel * dt - dv_dx * dt + noise) / mass
-        return next_pos, next_vel
+    def _next_vel(vel, force, force_next, noise, dt, mass, c1, c2):
+        return c2 * vel + (dt / (2 * mass)) * (c2 * force + force_next) + (c1 / mass) * noise
 
     def make_microstate_paths(
         self,
@@ -75,7 +66,7 @@ class EulerMaruyama(Simulator):
         noise: torch.Tensor,
         protocol_tensor: torch.Tensor
     ) -> Tuple[MicrostatePaths, PotentialTensor, MalliavinWeight]:
-        """Generates microstate paths based on the system dynamics.
+        """Generates microstate paths based on the system dynamics using the GJF integrator.
 
         Args:
             potential: The potential energy landscape object.
@@ -100,18 +91,15 @@ class EulerMaruyama(Simulator):
                       Shape: (Batch, Time_Steps)
 
         Raises:
-            ValueError: If an invalid simulation mode is selected.
+            ValueError: If an invalid simulation mode is selected, only underdamped is supported.
         """
-        #potential is a Potential object
-        #initial_phase of shape (num traj, spatial dimensions, 2 for position and velocity), 3 dimensions in total
-        #output of shape (initial_phase.shape[0] num traj, initial_phase.shape[1] spatial dimensions, time_steps+1, 2 for position and velocity), 4 dimensions in total
-        #and potential of shape (initial_phase.shape[0] num traj, initial_phase.shape[1] spatial dimensions, time_steps+1)
-        #and potential of shape (initial_phase.shape[0] num traj, time_steps+1) potential is scalar
         if self.dt is None:
             dt = 1 / time_steps
         else:
             dt = self.dt
-        
+        c2 = (1 - 0.5 * self.gamma * dt / self.mass) / (1 + 0.5 * self.gamma * dt / self.mass) # Eqn 8 for mass div, 50c for the greater c2 form
+
+        c1 = (1 + c2) / 2 #Eq. 9
         # Use lists to build trajectories dynamically, preserving the computation graph
         traj_pos_list = [initial_pos]
         traj_vel_list = [initial_vel]
@@ -119,9 +107,6 @@ class EulerMaruyama(Simulator):
         dv_dxda_list = []
         dw_list = []
         for i in range(time_steps):
-            if self.mode == 'underdamped':
-                # dx = v * dt
-                # dv = (-gamma * v * dt - dV/dx * dt + noise) / mass
                 current_pos = traj_pos_list[-1]
                 current_vel = traj_vel_list[-1]
                 
@@ -129,10 +114,10 @@ class EulerMaruyama(Simulator):
                 U = potential.get_potential_value(current_pos, protocol_tensor, i)
                 dv_dxda = potential.dv_dxda(current_pos, protocol_tensor, i)
 
-                # Compute next positions and velocities
-                next_pos, next_vel = self._compiled_underdamped_step(
-                                    current_pos, current_vel, dv_dx, noise[..., i], dt, self.gamma, self.mass
-                                )
+                next_pos = self._compiled_next_pos(current_pos, current_vel, -dv_dx, noise[..., i], dt, self.mass, c1)
+                next_dv_dx = potential.dv_dx(next_pos, protocol_tensor, i+1) #dv_dx that will be in the future in the next pos. This is ambiguous in the review paper, but is clear in the original GJF paper 10.1080/00268976.2012.760055
+
+                next_vel = self._compiled_next_vel(current_vel, -dv_dx, -next_dv_dx, noise[..., i], dt, self.mass, c1, c2)
 
                 U_next = potential.get_potential_value(current_pos, protocol_tensor, i + 1)
                 dw_list.append(U_next - U)
@@ -141,27 +126,7 @@ class EulerMaruyama(Simulator):
                 traj_vel_list.append(next_vel)
                 potential_list.append(U.squeeze())
                 dv_dxda_list.append(dv_dxda)
-            elif self.mode == 'overdamped':
-                # dv = 0
-                # dx = - (dV/dx * dt + noise) / gamma
-                
-                current_pos = traj_pos_list[-1]
 
-                dv_dx = potential.dv_dx(current_pos, protocol_tensor, i)
-                U = potential.get_potential_value(current_pos, protocol_tensor, i)
-                dv_dxda = potential.dv_dxda(current_pos, protocol_tensor, i)
-            
-                next_pos = self._compiled_overdamped_step(current_pos, dv_dx, noise[..., i], dt, self.gamma)
-
-                U_next = potential.get_potential_value(current_pos, protocol_tensor, i + 1)
-                dw_list.append(U_next - U)
-
-                traj_pos_list.append(next_pos)
-                traj_vel_list.append(torch.zeros_like(next_pos))
-                potential_list.append(U.squeeze())
-                dv_dxda_list.append(dv_dxda)
-            else:
-                raise ValueError(f"Please choose a valid mode, got {self.mode}, choose from 'underdamped' or 'overdamped'")
 
         traj_pos = torch.stack(traj_pos_list, dim=-1)  # (num_traj, spatial_dims, time_steps+1)
         traj_vel = torch.stack(traj_vel_list, dim=-1)  # (num_traj, spatial_dims, time_steps+1)
@@ -173,3 +138,5 @@ class EulerMaruyama(Simulator):
         malliavin_weight = self._compute_malliavin_weight(dv_dxda_tensor, noise, self.noise_sigma)
 
         return microstate_paths, potential_tensor, malliavin_weight, dw_tensor
+
+
