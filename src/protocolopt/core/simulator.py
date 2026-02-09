@@ -9,6 +9,15 @@ if TYPE_CHECKING:
 class Simulator(ABC):
     """Abstract base class for simulation engines."""
 
+    def _compute_malliavin_weight(self, dv_dxda, noise, noise_sigma):
+        # dv_dxda: (samples, spatial, coeffs, time)
+        # noise: (samples, spatial, time)
+        # output: (samples, coeffs, time)
+        drift_grad = -dv_dxda
+        noise_expanded = noise[:,:,None,:] # (samples, spatial, expanded to effect all coeffs equally, time)
+        dot_product = (drift_grad * noise_expanded).sum(dim = 1) # (samples, coeffs, time)
+        return dot_product / (noise_sigma ** 2)
+        
     @abstractmethod
     def make_microstate_paths(
         self,
